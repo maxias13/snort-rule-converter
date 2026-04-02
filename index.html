@@ -823,8 +823,29 @@
           }
 
           if (lower === "metadata") {
-            warnings.push("metadata retained; review Snort 3 metadata field compatibility");
-            transformed.push(opt);
+            // Extract "service <value>" entries from metadata and emit them as
+            // standalone service: options (Snort 3 syntax). Any remaining metadata
+            // fields are kept with a compatibility warning.
+            const metaValue = opt.slice(opt.indexOf(":") + 1).trim();
+            const metaParts = metaValue.split(",").map((s) => s.trim()).filter(Boolean);
+            const serviceParts = [];
+            const otherParts = [];
+            for (const part of metaParts) {
+              const tokens = part.trim().split(/\s+/);
+              if (tokens[0].toLowerCase() === "service" && tokens.length >= 2) {
+                serviceParts.push(tokens.slice(1).join(" "));
+              } else {
+                otherParts.push(part);
+              }
+            }
+            if (serviceParts.length > 0) {
+              serviceParts.forEach((svc) => transformed.push(`service:${svc}`));
+              changeCount += 1;
+            }
+            if (otherParts.length > 0) {
+              warnings.push("metadata retained; review Snort 3 metadata field compatibility");
+              transformed.push(`metadata:${otherParts.join(", ")}`);
+            }
             return;
           }
 
@@ -840,7 +861,7 @@
             return;
           }
           if (lower === "threshold") {
-            warnings.push("threshold removed from rule; moved to event_filter config in Snort 3");
+            warnings.push("threshold removed from rule; use detection_filter (inline rate-limit) or event_filter (global) in Snort 3");
             changeCount += 1;
             return;
           }
@@ -885,6 +906,15 @@
             return;
           }
 
+          if (lower === "fast_pattern") {
+            // fast_pattern:only is not valid in Snort 3 — the :only qualifier was removed.
+            // Plain fast_pattern is still valid as a standalone option.
+            const hasOnly = /^fast_pattern\s*:\s*only\s*$/i.test(opt);
+            transformed.push("fast_pattern");
+            if (hasOnly) changeCount += 1;
+            return;
+          }
+
           // pcre is intentionally left as-is in pass 1.
           // Its HTTP flag conversion (which inserts sticky buffers) must happen
           // AFTER content-sticky reordering in pass 2, so those buffers are not
@@ -902,6 +932,7 @@
           if (optionKeyword(opt) === "pcre") {
             const pcreConv = convertPcreOption(opt);
             if (pcreConv.changed) {
+              if (pcreConv.warnings) pcreConv.warnings.forEach((w) => warnings.push(w));
               pcreConv.sticky.forEach((s) => final.push(s));
               final.push(pcreConv.option);
               changeCount += 1;
@@ -1001,24 +1032,31 @@
 
         const sticky = [];
         let keptFlags = "";
+        let droppedRawbytes = false;
         for (const ch of parsed.flags) {
           // Only UPPERCASE letters are Snort-specific HTTP buffer flags.
           // Lowercase letters (i, s, m, x, g, etc.) are standard PCRE modifiers — always keep them.
           if (/[A-Z]/.test(ch) && flagMap[ch] !== undefined) {
             if (flagMap[ch] && !sticky.includes(flagMap[ch])) sticky.push(flagMap[ch]);
-            // flagMap[ch] === null means rawbytes — drop silently
+            else if (!flagMap[ch]) droppedRawbytes = true; // B (rawbytes) — drop and warn
           } else {
             keptFlags += ch;
           }
         }
 
-        if (!sticky.length) return { changed: false, option: opt, sticky: [] };
+        // Return early only when nothing actually changed.
+        // If keptFlags !== parsed.flags, a flag was dropped (e.g. B) even with no sticky buffer.
+        if (!sticky.length && keptFlags === parsed.flags) return { changed: false, option: opt, sticky: [], warnings: [] };
+
+        const pcreWarnings = [];
+        if (droppedRawbytes) pcreWarnings.push("pcre: B (rawbytes) flag removed in Snort 3; verify regex matches normalized data");
 
         const rebuilt = `/${parsed.body}/${keptFlags}`;
         return {
           changed: true,
           sticky,
-          option: `pcre:${neg}"${rebuilt}"`
+          option: `pcre:${neg}"${rebuilt}"`,
+          warnings: pcreWarnings
         };
       }
 
