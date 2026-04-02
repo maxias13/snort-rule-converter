@@ -944,9 +944,22 @@
           }
         });
 
-        const optionsString = final.join("; ");
+        // Ensure gid, sid, rev appear at the end in that order.
+        const TAIL_ORDER = ["gid", "sid", "rev"];
+        const tail = [];
+        const body = final.filter((opt) => {
+          if (TAIL_ORDER.includes(optionKeyword(opt))) {
+            tail.push(opt);
+            return false;
+          }
+          return true;
+        });
+        tail.sort((a, b) => TAIL_ORDER.indexOf(optionKeyword(a)) - TAIL_ORDER.indexOf(optionKeyword(b)));
+        const ordered = [...body, ...tail];
+
+        const optionsString = ordered.join("; ");
         const outputRule = `${parsed.header} (${optionsString};)`;
-        const sid = extractOptionValue(final, "sid");
+        const sid = extractOptionValue(ordered, "sid");
 
         return {
           rule: outputRule,
