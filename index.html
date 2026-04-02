@@ -897,7 +897,10 @@ if __name__ == "__main__":
       }
 
       function bindEvents() {
-        el.tabs.forEach((tab) => tab.addEventListener("click", () => switchView(tab.dataset.view, tab)));
+        el.tabs.forEach((tab) => tab.addEventListener("click", () => {
+          if (!tab.dataset.view) return; // external link — let the browser handle it
+          switchView(tab.dataset.view, tab);
+        }));
         el.loadFileBtn.addEventListener("click", () => el.fileInput.click());
         el.fileInput.addEventListener("change", handleFileLoad);
         el.convertBtn.addEventListener("click", runConversion);
