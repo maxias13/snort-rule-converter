@@ -860,7 +860,7 @@ if __name__ == "__main__":
       ]);
 
       const el = {
-        tabs: Array.from(document.querySelectorAll(".tab-btn")),
+        tabs: Array.from(document.querySelectorAll(".tab-btn[data-view]")),
         views: Array.from(document.querySelectorAll(".view")),
         loadFileBtn: document.getElementById("loadFileBtn"),
         fileInput: document.getElementById("rulesFileInput"),
