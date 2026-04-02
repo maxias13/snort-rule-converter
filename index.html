@@ -1817,7 +1817,7 @@ if __name__ == "__main__":
         }
       }
 
-      function searchSid() {
+      async function searchSid() {
         const sidRaw = String(el.sidInput.value || "").trim();
         if (!sidRaw) {
           el.sidResults.innerHTML = '<span class="danger">Please enter a SID.</span>';
@@ -1833,25 +1833,98 @@ if __name__ == "__main__":
         el.sidOpenLink.href = url;
         el.sidOpenLink.classList.remove("hidden");
 
+        // Show loading state
+        el.sidResults.classList.remove("muted");
+        el.sidResults.innerHTML = `<span class="muted">Fetching rule information from Snort.org...</span>`;
+
+        // Fetch & parse snort.org rule doc page
+        let remoteHtml = "";
+        try {
+          remoteHtml = await fetchSnortHtml(url);
+        } catch (e) {
+          remoteHtml = "";
+        }
+
+        let remoteSection = "";
+        if (remoteHtml) {
+          const ruleDoc = new DOMParser().parseFromString(remoteHtml, "text/html");
+
+          // Check for 404 / "not found" page
+          const bodyText = (ruleDoc.body?.textContent || "").toLowerCase();
+          if (bodyText.includes("not found") || bodyText.includes("404") || !ruleDoc.querySelector("h3, h2")) {
+            remoteSection = `<div class="muted" style="margin-bottom:10px;">No rule documentation found on Snort.org for SID ${escapeHtml(sid)}.</div>`;
+          } else {
+            remoteSection = buildSidDocHtml(ruleDoc, url);
+          }
+        } else {
+          remoteSection = `
+            <div class="muted" style="margin-bottom:10px;">
+              Could not fetch Snort.org data (CORS or network error).
+              <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open directly ↗</a>
+            </div>`;
+        }
+
+        // Locally converted rule (from localStorage)
         const sidMap = getSidMap();
         const localRule = sidMap[sid];
-        el.sidResults.classList.remove("muted");
-        el.sidResults.innerHTML = `
-          <div style="margin-bottom:10px;">
-            <span class="muted" style="font-size:0.85rem;">Snort.org Rule Documentation</span><br>
-            <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="word-break:break-all;">${escapeHtml(url)}</a>
+        const localSection = localRule
+          ? `<div style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+                <b>Locally converted Snort 3 rule (SID ${escapeHtml(sid)})</b>
+                <button class="btn secondary" style="padding:4px 10px; font-size:0.8rem;"
+                  onclick="navigator.clipboard.writeText(${JSON.stringify(localRule)}).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
+              </div>
+              <div class="codebox">${escapeHtml(localRule)}</div>
+            </div>`
+          : `<div class="muted" style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px; font-size:0.85rem;">
+              No locally converted rule for SID ${escapeHtml(sid)} — convert a Snort 2 rule with this SID on the Home tab.
+            </div>`;
+
+        el.sidResults.innerHTML = remoteSection + localSection;
+      }
+
+      function buildSidDocHtml(doc, sourceUrl) {
+        const SECTIONS = [
+          "Rule Category", "Alert Message", "Rule Explanation",
+          "What To Look For", "Known Usage", "False Positives",
+          "Contributors", "Rule Groups", "CVE", "Rule Vulnerability",
+          "Affected Products"
+        ];
+
+        // Try to get the page title / rule message
+        const title =
+          doc.querySelector("h1, h2, .rule-title, .page-title")?.textContent?.trim() ||
+          doc.querySelector("title")?.textContent?.replace("Snort - Rule Docs", "").trim() || "";
+
+        let rows = "";
+        doc.querySelectorAll("h3, h2").forEach((h) => {
+          const key = h.textContent.trim();
+          if (!SECTIONS.includes(key)) return;
+          const next = h.nextElementSibling;
+          if (!next) return;
+          // For CVE/references grab all links too
+          const links = Array.from(next.querySelectorAll("a"))
+            .map(a => `<a href="${escapeHtml(a.href)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary);">${escapeHtml(a.textContent.trim())}</a>`)
+            .join(", ");
+          const text = escapeHtml(next.textContent.trim());
+          rows += `<tr>
+            <td style="color:var(--muted); width:160px; white-space:nowrap;">${escapeHtml(key)}</td>
+            <td>${links || text}</td>
+          </tr>`;
+        });
+
+        if (!rows) {
+          return `<div class="muted">Could not parse rule details. <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open on Snort.org ↗</a></div>`;
+        }
+
+        return `
+          <div style="margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+            <span style="color:var(--primary); font-weight:700;">${escapeHtml(title)}</span>
+            <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:0.82rem; color:var(--muted);">Open on Snort.org ↗</a>
           </div>
-          ${localRule
-            ? `<div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
-                  <b>Locally converted rule (SID ${escapeHtml(sid)})</b>
-                  <button class="btn secondary" style="padding:4px 10px; font-size:0.8rem;"
-                    onclick="navigator.clipboard.writeText(${JSON.stringify(localRule)}).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
-                </div>
-                <div class="codebox">${escapeHtml(localRule)}</div>
-              </div>`
-            : `<div class="muted">No locally converted rule found for SID ${escapeHtml(sid)}.<br>Convert a Snort 2 rule with this SID on the Home tab — it will be saved here automatically.</div>`}
-        `;
+          <div class="table-scroll">
+            <table><tbody>${rows}</tbody></table>
+          </div>`;
       }
 
       function splitLines(text) { return String(text || "").split(/\r?\n/); }
