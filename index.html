@@ -1857,17 +1857,22 @@ if __name__ == "__main__":
 
         const sidMap = getSidMap();
         const localRule = sidMap[sid];
+        el.sidResults.classList.remove("muted");
         el.sidResults.innerHTML = `
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <b>Snort.org:</b>
-            <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>
-          </div>
-          <div style="margin-top:4px;" class="muted" style="font-size:0.82rem;">
-            snort.org does not allow embedding — use the <b>Open in new tab</b> button above to view the full documentation.
+          <div style="margin-bottom:10px;">
+            <span class="muted" style="font-size:0.85rem;">Snort.org Rule Documentation</span><br>
+            <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="word-break:break-all;">${escapeHtml(url)}</a>
           </div>
           ${localRule
-            ? `<div style="margin-top:10px;"><b>Locally converted rule for SID ${escapeHtml(sid)}:</b><div class="codebox" style="margin-top:6px;">${escapeHtml(localRule)}</div></div>`
-            : `<div style="margin-top:8px;" class="muted">No locally converted rule found for SID ${escapeHtml(sid)}. Convert a rule with this SID on the Home tab first.</div>`}
+            ? `<div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+                  <b>Locally converted rule (SID ${escapeHtml(sid)})</b>
+                  <button class="btn secondary" style="padding:4px 10px; font-size:0.8rem;"
+                    onclick="navigator.clipboard.writeText(${JSON.stringify(localRule)}).then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)})">Copy</button>
+                </div>
+                <div class="codebox">${escapeHtml(localRule)}</div>
+              </div>`
+            : `<div class="muted">No locally converted rule found for SID ${escapeHtml(sid)}.<br>Convert a Snort 2 rule with this SID on the Home tab — it will be saved here automatically.</div>`}
         `;
       }
 
