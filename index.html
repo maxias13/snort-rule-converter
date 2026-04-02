@@ -191,7 +191,7 @@
       z-index: 2;
     }
 
-    .explain-box, .diff-grid, .log-wrap {
+    .explain-box, .diff-grid {
       margin-top: 12px;
     }
 
@@ -435,27 +435,6 @@
         </div>
       </div>
 
-      <div class="panel log-wrap">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-          <h3 style="margin:0;">Conversion Log</h3>
-          <button class="btn warn" id="clearLogBtn">Clear Log</button>
-        </div>
-        <div class="table-scroll" style="margin-top: 10px; max-height: 320px;">
-          <table>
-            <thead>
-              <tr>
-                <th>Timestamp</th>
-                <th>Input (truncated)</th>
-                <th>Output (truncated)</th>
-                <th>Changes</th>
-              </tr>
-            </thead>
-            <tbody id="logTableBody">
-              <tr><td colspan="4" class="muted">No conversions yet.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
     </section>
 
     <section id="sidView" class="view">
@@ -557,7 +536,6 @@ python3 validate_snort3.py --strict converted_rules.rules</div>
 
   <script>
     (function () {
-      const LOG_KEY = "snort_conversion_log";
       const SID_MAP_KEY = "snort_sid_map";
 
       const PY_SCRIPT_TEMPLATE = `#!/usr/bin/env python3
@@ -873,8 +851,6 @@ if __name__ == "__main__":
         explainOutput: document.getElementById("explainOutput"),
         diffLeft: document.getElementById("diffLeft"),
         diffRight: document.getElementById("diffRight"),
-        logTableBody: document.getElementById("logTableBody"),
-        clearLogBtn: document.getElementById("clearLogBtn"),
         sidInput: document.getElementById("sidInput"),
         sidSearchBtn: document.getElementById("sidSearchBtn"),
         sidResults: document.getElementById("sidResults"),
@@ -891,7 +867,6 @@ if __name__ == "__main__":
 
       function init() {
         bindEvents();
-        renderLogTable();
         el.pyScriptDisplay.textContent = currentPyScript;
         // seedExample();
       }
@@ -907,7 +882,6 @@ if __name__ == "__main__":
         el.explainBtn.addEventListener("click", runExplain);
         el.clearBtn.addEventListener("click", clearMain);
         el.copyOutputBtn.addEventListener("click", copyOutput);
-        el.clearLogBtn.addEventListener("click", clearLog);
         el.sidSearchBtn.addEventListener("click", searchSid);
         el.sidInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") searchSid(); });
         el.downloadPyBtn.addEventListener("click", downloadPyScript);
@@ -1002,12 +976,6 @@ if __name__ == "__main__":
         const result = convertAll(inputText);
         el.output.value = result.output;
         renderDiff(inputText, result.outputNoSummary);
-        addLogEntry({
-          timestamp: formatTimestamp(new Date()),
-          inputRules: truncate(inputText.replace(/\s+/g, " "), 100),
-          outputRules: truncate(result.output.replace(/\s+/g, " "), 100),
-          changeCount: result.totalChanges
-        });
         persistSidMap(result.sidMap);
       }
 
@@ -1763,43 +1731,6 @@ if __name__ == "__main__":
         return text.match(/\s+|[A-Za-z0-9_$]+|[^\sA-Za-z0-9_$]/g) || [];
       }
 
-      function addLogEntry(entry) {
-        const log = getLog();
-        log.unshift(entry);
-        if (log.length > 50) log.length = 50;
-        localStorage.setItem(LOG_KEY, JSON.stringify(log));
-        renderLogTable();
-      }
-
-      function getLog() {
-        try {
-          const raw = localStorage.getItem(LOG_KEY);
-          return raw ? JSON.parse(raw) : [];
-        } catch (_) {
-          return [];
-        }
-      }
-
-      function renderLogTable() {
-        const log = getLog();
-        if (!log.length) {
-          el.logTableBody.innerHTML = '<tr><td colspan="4" class="muted">No conversions yet.</td></tr>';
-          return;
-        }
-        el.logTableBody.innerHTML = log.map((item) => `
-          <tr>
-            <td>${escapeHtml(item.timestamp || "")}</td>
-            <td>${escapeHtml(item.inputRules || "")}</td>
-            <td>${escapeHtml(item.outputRules || "")}</td>
-            <td>${Number(item.changeCount || 0)}</td>
-          </tr>
-        `).join("");
-      }
-
-      function clearLog() {
-        localStorage.removeItem(LOG_KEY);
-        renderLogTable();
-      }
 
       function persistSidMap(newMap) {
         if (!newMap || !Object.keys(newMap).length) return;
