@@ -380,7 +380,7 @@
   <div class="app">
     <nav class="top-nav">
       <div class="logo">
-        <img src="snort-logo.png" alt="Snort" style="height:144px; width:auto; display:block;" />
+        <img id="snortLogo" src="snort-logo.png" alt="Snort" style="height:72px; width:auto; display:block;" />
       </div>
       <div class="tabs">
         <button class="tab-btn active" data-view="homeView">Home</button>
@@ -870,7 +870,31 @@ if __name__ == "__main__":
       function init() {
         bindEvents();
         el.pyScriptDisplay.textContent = currentPyScript;
-        // seedExample();
+        removeWhiteBg(document.getElementById("snortLogo"), 230);
+      }
+
+      function removeWhiteBg(img, threshold) {
+        function process() {
+          const canvas = document.createElement("canvas");
+          canvas.width  = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0);
+          const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const px = data.data;
+          for (let i = 0; i < px.length; i += 4) {
+            if (px[i] > threshold && px[i+1] > threshold && px[i+2] > threshold) {
+              px[i+3] = 0;
+            }
+          }
+          ctx.putImageData(data, 0, 0);
+          img.src = canvas.toDataURL("image/png");
+        }
+        if (img.complete && img.naturalWidth) {
+          process();
+        } else {
+          img.addEventListener("load", process, { once: true });
+        }
       }
 
       function bindEvents() {
