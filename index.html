@@ -986,6 +986,7 @@ if __name__ == "__main__":
         el.views.forEach((v) => v.classList.toggle("active", v.id === viewId));
         el.tabs.forEach((t) => t.classList.remove("active"));
         tabEl.classList.add("active");
+        if (viewId === "homeView") clearMain();
         if (viewId === "validatorView") updateRuleCount();
       }
 
