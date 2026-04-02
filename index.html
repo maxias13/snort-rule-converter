@@ -516,8 +516,8 @@
           </div>
           <div style="margin-top:12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button class="btn" id="commitIpBtn">Apply to Script</button>
-            <span class="muted" style="font-size:0.82rem;">
-              IP 값을 입력하고 Apply to Script 클릭 시 스크립트에 반영됩니다.
+            <span id="ruleCountBadge" class="muted" style="font-size:0.82rem;">
+              No converted rules yet — convert rules on the Home tab first
             </span>
           </div>
         </div>
@@ -609,6 +609,13 @@ VAR_MAP = {
     "$TELNET_SERVERS": DEST_IP,
     "$AIM_SERVERS":    DEST_IP,
 }
+# ───────────────────────────────────────────────────────────────────────────
+
+# ── Embedded converted rules ───────────────────────────────────────────────
+# These rules were embedded automatically when the script was generated.
+# Running this script without arguments will validate these rules directly.
+EMBEDDED_RULES = """
+__EMBEDDED_RULES__"""
 # ───────────────────────────────────────────────────────────────────────────
 
 # ---------------------------------------------------------------------------
@@ -795,10 +802,24 @@ def main():
         print()
 
     if args.file:
+        print(f"Validating rules from file: {args.file}")
+        print()
         lines = Path(args.file).read_text(encoding="utf-8").splitlines()
-    else:
-        print("Reading from stdin (Ctrl+D / Ctrl+Z to finish)...", file=sys.stderr)
+    elif not sys.stdin.isatty():
+        print("Validating rules from stdin...")
+        print()
         lines = sys.stdin.read().splitlines()
+    elif EMBEDDED_RULES.strip():
+        print("Validating embedded converted rules...")
+        print()
+        lines = EMBEDDED_RULES.splitlines()
+    else:
+        print("No rules to validate.")
+        print("Usage: python3 validate_snort3.py <rules_file>")
+        print("       cat rules.rules | python3 validate_snort3.py")
+        print("Tip  : Generate this script from the web UI after converting rules")
+        print("       to embed the converted rules directly into this script.")
+        sys.exit(0)
 
     total = error_count = warn_count = 0
 
@@ -835,13 +856,20 @@ def main():
 if __name__ == "__main__":
     main()
 `;
-      function buildPyScript(srcIp, dstIp) {
+      function buildPyScript(srcIp, dstIp, rules) {
         return PY_SCRIPT_TEMPLATE
-          .replace("__SOURCE_IP__", srcIp || "")
-          .replace("__DEST_IP__",   dstIp || "");
+          .replace("__SOURCE_IP__",      srcIp || "")
+          .replace("__DEST_IP__",        dstIp || "")
+          .replace("__EMBEDDED_RULES__", rules || "");
       }
 
-      let currentPyScript = buildPyScript("", "");
+      function getConvertedRules() {
+        // Pull the current converted output from the Home tab textarea.
+        const out = document.getElementById("outputRules");
+        return out ? out.value.trim() : "";
+      }
+
+      let currentPyScript = buildPyScript("", "", "");
 
       const HTTP_BUFFERS = new Set([
         "http_uri", "http_raw_uri", "http_header", "http_raw_header", "http_method",
@@ -909,7 +937,11 @@ if __name__ == "__main__":
       }
 
       function downloadPyScript() {
-        const blob = new Blob([currentPyScript], { type: "text/x-python" });
+        const src   = el.srcIpInput.value.trim();
+        const dst   = el.dstIpInput.value.trim();
+        const rules = getConvertedRules();
+        const script = buildPyScript(src, dst, rules);
+        const blob = new Blob([script], { type: "text/x-python" });
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement("a");
         a.href     = url;
@@ -919,7 +951,11 @@ if __name__ == "__main__":
       }
 
       function copyPyScript() {
-        navigator.clipboard.writeText(currentPyScript).then(() => {
+        const src   = el.srcIpInput.value.trim();
+        const dst   = el.dstIpInput.value.trim();
+        const rules = getConvertedRules();
+        const script = buildPyScript(src, dst, rules);
+        navigator.clipboard.writeText(script).then(() => {
           const btn = el.copyPyBtn;
           const orig = btn.textContent;
           btn.textContent = "Copied!";
@@ -928,10 +964,12 @@ if __name__ == "__main__":
       }
 
       function commitIpToScript() {
-        const src = el.srcIpInput.value.trim();
-        const dst = el.dstIpInput.value.trim();
-        currentPyScript = buildPyScript(src, dst);
+        const src   = el.srcIpInput.value.trim();
+        const dst   = el.dstIpInput.value.trim();
+        const rules = getConvertedRules();
+        currentPyScript = buildPyScript(src, dst, rules);
         el.pyScriptDisplay.textContent = currentPyScript;
+        updateRuleCount();
 
         const btn = el.commitIpBtn;
         const orig = btn.textContent;
@@ -943,10 +981,27 @@ if __name__ == "__main__":
         }, 1800);
       }
 
+      function updateRuleCount() {
+        const rules = getConvertedRules();
+        const count = rules
+          ? rules.split("\\n").filter(l => l.trim() && !l.trim().startsWith("#")).length
+          : 0;
+        const el2 = document.getElementById("ruleCountBadge");
+        if (!el2) return;
+        if (count > 0) {
+          el2.textContent = count + " converted rule" + (count > 1 ? "s" : "") + " ready to embed";
+          el2.style.color = "var(--success)";
+        } else {
+          el2.textContent = "No converted rules yet — convert rules on the Home tab first";
+          el2.style.color = "var(--warn)";
+        }
+      }
+
       function switchView(viewId, tabEl) {
         el.views.forEach((v) => v.classList.toggle("active", v.id === viewId));
         el.tabs.forEach((t) => t.classList.remove("active"));
         tabEl.classList.add("active");
+        if (viewId === "validatorView") updateRuleCount();
       }
 
       function handleFileLoad(event) {
