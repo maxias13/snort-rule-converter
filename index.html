@@ -1508,10 +1508,16 @@ if __name__ == "__main__":
           }
         });
 
+        // PASS 4: Merge content positional modifiers inline (Snort 3 syntax)
+        // Snort 2: content:"x"; depth:20; nocase; distance:0;
+        // Snort 3: content:"x", depth 20, nocase, distance 0;
+        const merged = mergeContentModifiers(final);
+        if (JSON.stringify(merged) !== JSON.stringify(final)) changeCount += 1;
+
         // Ensure gid, sid, rev appear at the end in that order.
         const TAIL_ORDER = ["gid", "sid", "rev"];
         const tail = [];
-        const body = final.filter((opt) => {
+        const body = merged.filter((opt) => {
           if (TAIL_ORDER.includes(optionKeyword(opt))) {
             tail.push(opt);
             return false;
@@ -1537,6 +1543,42 @@ if __name__ == "__main__":
           changeCount,
           sid
         };
+      }
+
+      // Content positional modifiers that must be folded into the content option in Snort 3.
+      const CONTENT_POS_MODS = new Set(["depth", "within", "offset", "distance", "nocase", "fast_pattern"]);
+
+      function mergeContentModifiers(options) {
+        const result = [];
+        let i = 0;
+        while (i < options.length) {
+          const opt = options[i];
+          const key = optionKeyword(opt).toLowerCase();
+          if (key === "content") {
+            let merged = opt;
+            i++;
+            while (i < options.length) {
+              const nextKey = optionKeyword(options[i]).toLowerCase();
+              if (!CONTENT_POS_MODS.has(nextKey)) break;
+              const modOpt = options[i];
+              const colonIdx = modOpt.indexOf(":");
+              if (colonIdx === -1) {
+                // Boolean modifier: nocase, fast_pattern
+                merged += `, ${nextKey}`;
+              } else {
+                // Value modifier: depth:20, distance:0, within:10, offset:5
+                const val = modOpt.slice(colonIdx + 1).trim();
+                merged += `, ${nextKey} ${val}`;
+              }
+              i++;
+            }
+            result.push(merged);
+          } else {
+            result.push(opt);
+            i++;
+          }
+        }
+        return result;
       }
 
       function reorderStickyForContent(options) {
