@@ -180,6 +180,33 @@
       box-shadow: 0 0 0 1px rgba(0, 212, 255, 0.45), 0 0 14px rgba(0, 212, 255, 0.2);
     }
 
+    .drop-zone { position: relative; }
+
+    .drop-zone.drag-over .textarea {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.5), 0 0 24px rgba(0, 212, 255, 0.2);
+    }
+
+    .drop-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      background: rgba(0, 212, 255, 0.08);
+      border: 2px dashed var(--primary);
+      z-index: 5;
+      pointer-events: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--primary);
+      letter-spacing: 0.04em;
+      gap: 8px;
+    }
+
+    .drop-zone.drag-over .drop-overlay { display: flex; }
+
     .readonly-wrap {
       position: relative;
     }
@@ -400,9 +427,12 @@
       </div>
 
       <div class="split" style="margin-top: 12px;">
-        <div class="panel">
+        <div class="panel drop-zone" id="inputDropZone">
           <h3>Snort 2 Rule Input</h3>
-          <textarea id="inputRules" class="textarea" placeholder="Paste Snort 2 local rules here (one rule per line)..."></textarea>
+          <div style="position:relative;">
+            <div class="drop-overlay" id="dropOverlay">⬇ Drop .rules / .txt file</div>
+            <textarea id="inputRules" class="textarea" placeholder="Paste Snort 2 local rules here, or drag & drop a .rules / .txt file…"></textarea>
+          </div>
         </div>
         <div class="panel">
           <h3>Snort 3 Rule Output</h3>
@@ -913,6 +943,33 @@ if __name__ == "__main__":
         el.downloadPyBtn.addEventListener("click", downloadPyScript);
         el.copyPyBtn.addEventListener("click", copyPyScript);
         el.commitIpBtn.addEventListener("click", commitIpToScript);
+
+        // ── Drag & Drop on Snort 2 input panel ──────────────────────────
+        const dropZone = document.getElementById("inputDropZone");
+        ["dragenter", "dragover"].forEach(evt => {
+          dropZone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add("drag-over");
+          });
+        });
+        ["dragleave", "dragend"].forEach(evt => {
+          dropZone.addEventListener(evt, (e) => {
+            if (!dropZone.contains(e.relatedTarget)) {
+              dropZone.classList.remove("drag-over");
+            }
+          });
+        });
+        dropZone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dropZone.classList.remove("drag-over");
+          const file = e.dataTransfer.files && e.dataTransfer.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => { el.input.value = String(reader.result || ""); };
+          reader.readAsText(file);
+        });
       }
 
       function seedExample() {
