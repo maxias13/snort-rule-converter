@@ -1493,6 +1493,8 @@ if __name__ == "__main__":
           return true;
         });
         tail.sort((a, b) => TAIL_ORDER.indexOf(optionKeyword(a)) - TAIL_ORDER.indexOf(optionKeyword(b)));
+        const ordered = [...body, ...tail];
+
         // Replace SID if a new one was assigned
         if (newSid !== null && newSid !== undefined) {
           const sidIdx = ordered.findIndex((o) => optionKeyword(o) === "sid");
