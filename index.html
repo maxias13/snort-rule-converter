@@ -381,6 +381,17 @@
       font-family: Consolas, Monaco, Menlo, monospace;
       font-size: 0.82rem;
       color: var(--primary);
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .opt-rule-header span {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .opt-rule-header.expanded span {
+      white-space: pre-wrap;
       word-break: break-all;
     }
     .opt-rule-body { padding: 10px 12px; }
@@ -1425,10 +1436,8 @@ if __name__ == "__main__":
           const trimmed = line.trim();
           const { mismatch, suggestions, explanation } = analyzeRule(trimmed, optVersion);
           const label   = `룰 ${idx + 1}`;
-          const preview = trimmed.length > 130 ? trimmed.slice(0, 130) + "…" : trimmed;
-
           html += `<div class="opt-rule-block">
-            <div class="opt-rule-header">${escapeHtml(label)}: <span style="font-family:monospace;font-weight:400;">${escapeHtml(preview)}</span></div>
+            <div class="opt-rule-header" title="클릭하면 전체 룰 보기" onclick="this.classList.toggle('expanded')">${escapeHtml(label)}: <span>${escapeHtml(trimmed)}</span></div>
             <div class="opt-rule-body">`;
 
           // ── Version mismatch banner ───────────────────────────────────
