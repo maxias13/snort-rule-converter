@@ -506,6 +506,8 @@
         <button class="tab-btn active" data-view="homeView">Home</button>
         <button class="tab-btn" data-view="optimizerView">Rule Optimization</button>
         <button class="tab-btn" data-view="validatorView">Python Validator</button>
+        <button class="tab-btn" data-view="sruView">Snort SRU Updates</button>
+        <button class="tab-btn" data-view="lspView">Snort LSP Updates</button>
         <a class="tab-btn" href="https://docs.snort.org/welcome" target="_blank" rel="noopener noreferrer">How to write Snort 3 rules &#8599;</a>
       </div>
     </nav>
@@ -695,6 +697,49 @@ python3 validate_snort3.py --strict converted_rules.rules</div>
         </div>
       </div>
     </section>
+
+    <!-- ── Snort SRU Updates ───────────────────────────────────────────── -->
+    <section id="sruView" class="view">
+      <div class="panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+          <div>
+            <h3 style="margin:0 0 4px;">Snort SRU Updates</h3>
+            <p class="muted" style="margin:0; font-size:0.85rem;">
+              Latest Snort Rule Update (SRU) release notes from Snort.org
+            </p>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn" id="sruLoadBtn">&#8635; Load Latest</button>
+            <a href="https://www.snort.org/snort-3-rule-updates" target="_blank" rel="noopener noreferrer" class="btn secondary">Open on Snort.org &#8599;</a>
+          </div>
+        </div>
+        <div id="sruResults" class="result-card muted" style="min-height:120px;">
+          Click <b>Load Latest</b> to fetch the current SRU release notes from Snort.org.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Snort LSP Updates ───────────────────────────────────────────── -->
+    <section id="lspView" class="view">
+      <div class="panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+          <div>
+            <h3 style="margin:0 0 4px;">Snort LSP Updates</h3>
+            <p class="muted" style="margin:0; font-size:0.85rem;">
+              Latest Snort Lightweight Security Package (LSP) release notes from Snort.org
+            </p>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn" id="lspLoadBtn">&#8635; Load Latest</button>
+            <a href="https://www.snort.org/snort-3-rule-updates" target="_blank" rel="noopener noreferrer" class="btn secondary">Open on Snort.org &#8599;</a>
+          </div>
+        </div>
+        <div id="lspResults" class="result-card muted" style="min-height:120px;">
+          Click <b>Load Latest</b> to fetch the current LSP release notes from Snort.org.
+        </div>
+      </div>
+    </section>
+
   </div>
 
   <script>
@@ -1033,7 +1078,11 @@ if __name__ == "__main__":
         optResults: document.getElementById("optResults"),
         optRuleCountBadge: document.getElementById("optRuleCountBadge"),
         optVersionSnort2: document.getElementById("optVersionSnort2"),
-        optVersionSnort3: document.getElementById("optVersionSnort3")
+        optVersionSnort3: document.getElementById("optVersionSnort3"),
+        sruLoadBtn: document.getElementById("sruLoadBtn"),
+        sruResults: document.getElementById("sruResults"),
+        lspLoadBtn: document.getElementById("lspLoadBtn"),
+        lspResults: document.getElementById("lspResults")
       };
 
       init();
@@ -1190,6 +1239,10 @@ if __name__ == "__main__":
           reader.onload = () => { el.input.value = String(reader.result || ""); };
           reader.readAsText(file);
         });
+
+        // ── SRU / LSP news ───────────────────────────────────────────────
+        el.sruLoadBtn.addEventListener("click", () => loadSnortUpdates("sru"));
+        el.lspLoadBtn.addEventListener("click", () => loadSnortUpdates("lsp"));
       }
 
       function seedExample() {
@@ -1611,6 +1664,100 @@ if __name__ == "__main__":
         const resp = await fetch(proxyUrl);
         if (!resp.ok) throw new Error("HTTP " + resp.status + " from proxy");
         return resp.text();
+      }
+
+      // ── SRU / LSP update fetcher ─────────────────────────────────────
+      async function loadSnortUpdates(type) {
+        const isSru = type === "sru";
+        const resultsEl = isSru ? el.sruResults : el.lspResults;
+        const loadBtn   = isSru ? el.sruLoadBtn  : el.lspLoadBtn;
+        const url = "https://www.snort.org/snort-3-rule-updates";
+
+        resultsEl.className = "result-card";
+        resultsEl.innerHTML = '<span class="muted">&#8635; Fetching latest updates from Snort.org&hellip;</span>';
+        loadBtn.disabled = true;
+
+        let html = "";
+        try {
+          html = await fetchSnortHtml(url);
+        } catch (e) {
+          html = "";
+        }
+        loadBtn.disabled = false;
+
+        if (!html) {
+          resultsEl.innerHTML = `
+            <div class="muted">Could not fetch data (CORS or network error).</div>
+            <div style="margin-top:10px;">
+              <a href="${url}" target="_blank" rel="noopener noreferrer" class="btn secondary" style="font-size:0.85rem;">Open directly on Snort.org &#8599;</a>
+            </div>`;
+          return;
+        }
+
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        resultsEl.innerHTML = parseSnortUpdatesPage(doc, type, url);
+      }
+
+      function parseSnortUpdatesPage(doc, type, sourceUrl) {
+        const isSru = type === "sru";
+        // The page lists both SRU and LSP entries — differentiate by heading text
+        const keyword = isSru ? "SRU" : "LSP";
+        const altKeyword = isSru ? "Snort 3 Rule Update" : "Lightweight Security Package";
+
+        // Collect all headings + their following sibling content
+        const headings = Array.from(doc.querySelectorAll("h1, h2, h3, h4, h5"));
+        const matchedBlocks = [];
+
+        headings.forEach((h) => {
+          const txt = h.textContent.trim();
+          if (!txt.toUpperCase().includes(keyword) && !txt.includes(altKeyword)) return;
+
+          let contentHtml = "";
+          let sibling = h.nextElementSibling;
+          let count = 0;
+          while (sibling && !["H1","H2","H3","H4","H5"].includes(sibling.tagName) && count < 8) {
+            contentHtml += `<div style="margin-bottom:6px; font-size:0.88rem; color:var(--text);">${escapeHtml(sibling.textContent.trim())}</div>`;
+            sibling = sibling.nextElementSibling;
+            count++;
+          }
+
+          if (txt || contentHtml) {
+            matchedBlocks.push({ title: txt, body: contentHtml });
+          }
+        });
+
+        // If nothing matched, try grabbing paragraphs/list items that contain the keyword
+        if (!matchedBlocks.length) {
+          const paragraphs = Array.from(doc.querySelectorAll("p, li"))
+            .filter(el => el.textContent.toUpperCase().includes(keyword))
+            .slice(0, 20);
+          if (paragraphs.length) {
+            const items = paragraphs.map(p => `<div style="padding:6px 0; border-bottom:1px solid var(--border); font-size:0.88rem;">${escapeHtml(p.textContent.trim())}</div>`).join("");
+            return `
+              <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <span style="color:var(--primary); font-weight:700;">${escapeHtml(keyword)} entries found</span>
+                <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:0.82rem; color:var(--muted);">Open full page &#8599;</a>
+              </div>
+              <div>${items}</div>`;
+          }
+          return `
+            <div class="muted">No ${escapeHtml(keyword)} entries could be parsed from the page.
+              <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary);">Open on Snort.org &#8599;</a>
+            </div>`;
+        }
+
+        const blocks = matchedBlocks.map(b => `
+          <div style="margin-bottom:14px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:rgba(0,212,255,0.03);">
+            <div style="color:var(--primary); font-weight:700; font-size:0.93rem; margin-bottom:6px;">${escapeHtml(b.title)}</div>
+            ${b.body || '<div class="muted" style="font-size:0.85rem;">No additional details.</div>'}
+          </div>`).join("");
+
+        return `
+          <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+            <span style="color:var(--primary); font-weight:700;">${matchedBlocks.length} ${escapeHtml(keyword)} release${matchedBlocks.length > 1 ? "s" : ""} found</span>
+            <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:0.82rem; color:var(--muted);">Open full page on Snort.org &#8599;</a>
+          </div>
+          ${blocks}`;
       }
 
       function clearMain() {
