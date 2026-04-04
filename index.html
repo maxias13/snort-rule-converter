@@ -588,17 +588,28 @@
       background: var(--panel-2);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 16px 18px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
+      overflow: hidden;
     }
     .fb-post-header {
       display: flex; align-items: center; gap: 10px;
-      margin-bottom: 8px; flex-wrap: wrap;
+      padding: 12px 16px;
+      cursor: pointer;
+      user-select: none;
+      flex-wrap: wrap;
+      transition: background 0.15s;
     }
+    .fb-post-header:hover { background: rgba(255,255,255,0.03); }
     .fb-post-title {
-      font-weight: 700; font-size: 0.97rem; color: #fff;
+      font-weight: 700; font-size: 0.95rem; color: #fff;
       flex: 1;
     }
+    .fb-chevron {
+      color: var(--muted); font-size: 0.75rem;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .fb-post.open .fb-chevron { transform: rotate(180deg); }
     .fb-type-badge {
       font-size: 0.72rem; font-weight: 700;
       padding: 2px 8px; border-radius: 20px;
@@ -607,8 +618,15 @@
     .fb-type-feature { background: rgba(0,212,255,0.15); color: var(--primary); border: 1px solid rgba(0,212,255,0.3); }
     .fb-type-bug     { background: rgba(255,68,68,0.15);  color: var(--error);   border: 1px solid rgba(255,68,68,0.3); }
     .fb-type-suggest { background: rgba(255,170,0,0.15);  color: var(--warn);    border: 1px solid rgba(255,170,0,0.3); }
+    .fb-post-body {
+      display: none;
+      padding: 0 16px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .fb-post.open .fb-post-body { display: block; }
     .fb-post-meta {
-      font-size: 0.78rem; color: var(--muted); margin-bottom: 10px;
+      font-size: 0.78rem; color: var(--muted);
+      padding-top: 10px; margin-bottom: 8px;
     }
     .fb-post-content {
       font-size: 0.88rem; color: #c8d8e8;
@@ -1464,12 +1482,15 @@ if __name__ == "__main__":
           }
           fbPostList.innerHTML = posts.map(p => `
             <div class="fb-post">
-              <div class="fb-post-header">
+              <div class="fb-post-header" onclick="this.closest('.fb-post').classList.toggle('open')">
                 <span class="fb-type-badge ${typeBadgeClass(p.type)}">${escapeHtml(p.type)}</span>
                 <span class="fb-post-title">${escapeHtml(p.title)}</span>
+                <span class="fb-chevron">&#9660;</span>
               </div>
-              <div class="fb-post-meta">&#128100; ${escapeHtml(p.author)} &nbsp;&middot;&nbsp; ${fmtTs(p.createdAt)}</div>
-              <div class="fb-post-content">${escapeHtml(p.content)}</div>
+              <div class="fb-post-body">
+                <div class="fb-post-meta">&#128100; ${escapeHtml(p.author)} &nbsp;&middot;&nbsp; ${fmtTs(p.createdAt)}</div>
+                <div class="fb-post-content">${escapeHtml(p.content)}</div>
+              </div>
             </div>`).join("");
         }
 
