@@ -1349,7 +1349,7 @@ if __name__ == "__main__":
       function updateOptRuleCount() {
         const badge = el.optRuleCountBadge;
         if (!badge) return;
-        const count = el.optInput.value.split("\n").filter(l => l.trim() && !l.trim().startsWith("#")).length;
+        const count = joinMultilineRules(el.optInput.value).length;
         badge.textContent = count > 0 ? `${count} rule${count > 1 ? "s" : ""} loaded` : "";
         badge.style.color = count > 0 ? "var(--success)" : "var(--muted)";
       }
@@ -1358,9 +1358,60 @@ if __name__ == "__main__":
       //  Rule Optimization Engine
       // ════════════════════════════════════════════════════════════════════
 
+      function joinMultilineRules(text) {
+        // Join lines that belong to the same rule.
+        // A Snort rule starts with an action keyword and ends when the
+        // parentheses are balanced (closing ')' found).
+        const ACTIONS = /^(alert|log|pass|drop|reject|sdrop)\s/i;
+        const lines = text.split(/\r?\n/);
+        const rules = [];
+        let current = null;
+        let depth = 0;
+
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line || line.startsWith("#")) {
+            // flush pending rule if comment breaks a block (shouldn't happen)
+            if (current !== null && depth === 0) {
+              rules.push(current);
+              current = null;
+            }
+            continue;
+          }
+
+          if (current === null) {
+            // Start of a new rule
+            current = line;
+            depth = 0;
+            for (const ch of line) {
+              if (ch === "(") depth++;
+              else if (ch === ")") depth--;
+            }
+          } else {
+            // Continuation of an existing rule
+            current += " " + line;
+            for (const ch of line) {
+              if (ch === "(") depth++;
+              else if (ch === ")") depth--;
+            }
+          }
+
+          // Rule is complete when parentheses are balanced and we had at least one open paren
+          if (depth <= 0 && current !== null) {
+            rules.push(current.trim());
+            current = null;
+            depth = 0;
+          }
+        }
+
+        // Flush any remaining incomplete rule
+        if (current !== null) rules.push(current.trim());
+
+        return rules.filter(Boolean);
+      }
+
       function runOptimize() {
-        const lines = el.optInput.value.split("\n");
-        const ruleLines = lines.filter(l => l.trim() && !l.trim().startsWith("#"));
+        const ruleLines = joinMultilineRules(el.optInput.value);
         if (!ruleLines.length) {
           el.optResults.innerHTML = '<div class="result-card muted">분석할 룰이 없습니다. 위 입력창에 룰을 붙여넣고 Optimize를 클릭하세요.</div>';
           return;
