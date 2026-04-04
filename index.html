@@ -2111,6 +2111,7 @@ if __name__ == "__main__":
         el.tabs.forEach((t) => t.classList.remove("active"));
         tabEl.classList.add("active");
         location.hash = viewId;
+        window.scrollTo({ top: 0, behavior: "instant" });
         if (viewId === "homeView") clearMain();
         if (viewId === "validatorView") updateRuleCount();
         if (viewId === "feedbackView" && window.__fbLoadPosts) window.__fbLoadPosts();
