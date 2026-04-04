@@ -1317,6 +1317,13 @@ if __name__ == "__main__":
         bindEvents();
         el.pyScriptDisplay.textContent = currentPyScript;
         removeWhiteBg(document.getElementById("snortLogo"), 230);
+
+        // Restore tab from URL hash on load/refresh
+        const hash = location.hash.replace("#", "");
+        if (hash) {
+          const tabEl = el.tabs.find(t => t.dataset.view === hash);
+          if (tabEl) switchView(hash, tabEl);
+        }
       }
 
       function removeWhiteBg(img, threshold) {
@@ -2103,6 +2110,7 @@ if __name__ == "__main__":
         el.views.forEach((v) => v.classList.toggle("active", v.id === viewId));
         el.tabs.forEach((t) => t.classList.remove("active"));
         tabEl.classList.add("active");
+        location.hash = viewId;
         if (viewId === "homeView") clearMain();
         if (viewId === "validatorView") updateRuleCount();
         if (viewId === "feedbackView" && window.__fbLoadPosts) window.__fbLoadPosts();
