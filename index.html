@@ -223,7 +223,7 @@
     }
 
     .diff-grid {
-      margin-top: 12px;
+      margin-top: 0;
     }
 
     .explain-content {
@@ -452,6 +452,42 @@
 
     .check-row-error { color: var(--error); font-weight: 600; }
     .check-row-warn  { color: var(--warn);  font-weight: 600; }
+
+    /* ── Claude AI explanation output ── */
+    .ai-explain { line-height: 1.6; font-size: 0.9rem; }
+    .ai-explain h2 { color: var(--primary); font-size: 1rem; margin: 14px 0 6px; }
+    .ai-explain h3 { color: #9beeff; font-size: 0.92rem; margin: 10px 0 4px; }
+    .ai-explain p  { margin: 6px 0; }
+    .ai-explain ul, .ai-explain ol { margin: 6px 0 6px 20px; }
+    .ai-explain li { margin-bottom: 3px; }
+    .ai-explain code {
+      background: rgba(0,212,255,0.08);
+      border: 1px solid rgba(0,212,255,0.2);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: Consolas, Monaco, Menlo, monospace;
+      font-size: 0.85em;
+      color: #9beeff;
+    }
+    .ai-explain pre {
+      background: #0a1122;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      font-family: Consolas, Monaco, Menlo, monospace;
+      font-size: 0.84rem;
+      margin: 8px 0;
+    }
+    .ai-explain pre code { background: none; border: none; padding: 0; color: var(--text); }
+    .ai-explain strong { color: #d0eeff; }
+    .ai-thinking { color: var(--muted); font-size:0.85rem; display:flex; align-items:center; gap:8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid var(--border);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin 0.8s linear infinite; flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -504,31 +540,51 @@
         </div>
       </div>
 
-      <div class="panel">
-        <h3>Compare Input Snort 2 Rule vs Converted Snort 3 Rule</h3>
+      <div>
+        <div style="padding:0 2px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <span style="color:var(--primary);font-size:0.96rem;font-weight:700;letter-spacing:0.02em;">Compare Input Snort 2 Rule vs Converted Snort 3 Rule</span>
+          <div class="legend" style="margin:0;">
+            <span class="tag red">Removed</span>
+            <span class="tag green">Added</span>
+            <span class="tag yellow">Modified</span>
+          </div>
+        </div>
         <div class="diff-grid">
-          <div>
-            <div class="muted" style="margin-bottom: 6px;">Original (Snort 2)</div>
+          <div class="panel">
+            <div class="muted" style="margin-bottom:6px;">Original (Snort 2)</div>
             <div id="diffLeft" class="codebox"></div>
           </div>
-          <div>
-            <div class="muted" style="margin-bottom: 6px;">Converted (Snort 3)</div>
+          <div class="panel">
+            <div class="muted" style="margin-bottom:6px;">Converted (Snort 3)</div>
             <div id="diffRight" class="codebox"></div>
           </div>
         </div>
-        <div class="legend">
-          <span class="tag red">Removed</span>
-          <span class="tag green">Added</span>
-          <span class="tag yellow">Modified</span>
-        </div>
       </div>
 
-      <div class="panel explain-box" id="explainSection">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <h3 style="margin:0;">Snort 2 Rule Explanation</h3>
-          <button class="btn secondary" id="explainBtn">Explain</button>
+      <div class="panel" id="explainSection">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <h3 style="margin:0;">Snort 2/3 Rule Explanation</h3>
+          <button class="btn" id="explainBtn">Explain</button>
         </div>
-        <div id="explainOutput" class="explain-content muted">Convert rules to automatically search <b>Snort.org Rule Docs</b>, or click <b>Explain</b> manually.</div>
+
+        <!-- Claude API Key -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+          <label class="muted" style="font-size:0.85rem;white-space:nowrap;">Claude API Key</label>
+          <div style="display:flex;flex:1;min-width:220px;gap:6px;">
+            <input type="password" id="claudeApiKey" class="num-input" style="flex:1;font-family:monospace;"
+              placeholder="sk-ant-api03-…" autocomplete="off" />
+            <button class="btn secondary" id="toggleApiKeyBtn" style="padding:7px 10px;font-size:0.8rem;">Show</button>
+          </div>
+          <span id="apiKeyStatus" class="muted" style="font-size:0.8rem;"></span>
+        </div>
+
+        <!-- Rule input textarea -->
+        <textarea id="explainInput" class="textarea" rows="4"
+          placeholder="Paste a Snort 2 or Snort 3 rule here to get a detailed AI explanation…"
+          style="margin-bottom:10px; min-height:90px;"></textarea>
+
+        <!-- AI output -->
+        <div id="explainOutput" class="explain-content muted">Enter a rule above and click <b>Explain</b> to get a Claude AI analysis.</div>
       </div>
 
     </section>
@@ -984,6 +1040,10 @@ if __name__ == "__main__":
         output: document.getElementById("outputRules"),
         copyOutputBtn: document.getElementById("copyOutputBtn"),
         explainOutput: document.getElementById("explainOutput"),
+        explainInput: document.getElementById("explainInput"),
+        claudeApiKey: document.getElementById("claudeApiKey"),
+        toggleApiKeyBtn: document.getElementById("toggleApiKeyBtn"),
+        apiKeyStatus: document.getElementById("apiKeyStatus"),
         diffLeft: document.getElementById("diffLeft"),
         diffRight: document.getElementById("diffRight"),
         sidInput: document.getElementById("sidInput"),
@@ -1020,7 +1080,16 @@ if __name__ == "__main__":
         el.output.value = "";
         el.valRulesInput.value = "";
         el.optInput.value = "";
+        el.explainInput.value = "";
         localStorage.removeItem(SID_MAP_KEY);
+
+        // Restore Claude API key from localStorage
+        const savedKey = localStorage.getItem("claude_api_key") || "";
+        if (savedKey) {
+          el.claudeApiKey.value = savedKey;
+          el.apiKeyStatus.textContent = "Key saved";
+          el.apiKeyStatus.style.color = "var(--success)";
+        }
 
         bindEvents();
         el.pyScriptDisplay.textContent = currentPyScript;
@@ -1068,6 +1137,24 @@ if __name__ == "__main__":
         el.copyPyBtn.addEventListener("click", copyPyScript);
         el.commitIpBtn.addEventListener("click", commitIpToScript);
         el.downloadRulesBtn.addEventListener("click", downloadRulesFile);
+
+        // ── Claude API key toggle ────────────────────────────────────────
+        el.toggleApiKeyBtn.addEventListener("click", () => {
+          const isHidden = el.claudeApiKey.type === "password";
+          el.claudeApiKey.type = isHidden ? "text" : "password";
+          el.toggleApiKeyBtn.textContent = isHidden ? "Hide" : "Show";
+        });
+        el.claudeApiKey.addEventListener("change", () => {
+          const key = el.claudeApiKey.value.trim();
+          if (key) {
+            localStorage.setItem("claude_api_key", key);
+            el.apiKeyStatus.textContent = "Key saved";
+            el.apiKeyStatus.style.color = "var(--success)";
+          } else {
+            localStorage.removeItem("claude_api_key");
+            el.apiKeyStatus.textContent = "";
+          }
+        });
 
         // ── Validator rules input ────────────────────────────────────────
         el.valLoadFileBtn.addEventListener("click", () => el.valFileInput.click());
@@ -1461,29 +1548,103 @@ if __name__ == "__main__":
       }
 
       async function runExplain() {
-        // Read from the converted Snort 3 output; fall back to Snort 2 input if empty
-        const sourceText = el.output.value.trim() ? el.output.value : el.input.value;
-        const lines = splitLines(sourceText);
-        const ruleItems = [];
-
-        lines.forEach((line, idx) => {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith("#")) return;
-          const parsed = parseRule(trimmed);
-          if (!parsed.ok) return;
-          const options = splitOptions(parsed.options);
-          const msg = extractOptionValue(options, "msg") || "";
-          const sid = extractOptionValue(options, "sid") || "";
-          ruleItems.push({ index: idx + 1, msg, sid });
-        });
-
-        if (!ruleItems.length) {
-          el.explainOutput.innerHTML = '<span class="muted">No parsable rules found.</span>';
+        const ruleText = el.explainInput.value.trim();
+        if (!ruleText) {
+          el.explainOutput.innerHTML = '<span class="muted">Please enter a Snort rule in the input box above.</span>';
           return;
         }
 
-        el.explainOutput.innerHTML = '<span class="muted">🔍 Searching Snort.org Rule Docs...</span>';
-        await renderExplainSearch(ruleItems, 0);
+        const apiKey = el.claudeApiKey.value.trim() || localStorage.getItem("claude_api_key") || "";
+        if (!apiKey) {
+          el.explainOutput.innerHTML = '<span class="danger">Claude API Key is required. Enter your key in the field above.</span>';
+          return;
+        }
+
+        el.explainOutput.innerHTML = `<div class="ai-thinking"><div class="spinner"></div> Analyzing rule with Claude AI…</div>`;
+        el.explainBtn.disabled = true;
+
+        const prompt = `You are a Snort IDS/IPS rule expert. Analyze the following Snort rule and provide a detailed, structured explanation in English.
+
+Cover these sections (use ## headings):
+## Overview
+## Rule Header (action, protocol, source, destination, direction, port)
+## Rule Options Analysis
+For each significant option (msg, content, pcre, flow, sid, rev, metadata, service, etc.), explain what it does and its value.
+## What This Rule Detects
+## Security Context & Threat
+## Snort 2 vs Snort 3 Compatibility Notes (if applicable)
+## Optimization Suggestions (if any)
+
+Rule:
+\`\`\`
+${ruleText}
+\`\`\`
+
+Be precise and technical. Format well with markdown.`;
+
+        try {
+          const resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "x-api-key": apiKey,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+              "anthropic-dangerous-direct-browser-allowed": "true"
+            },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6",
+              max_tokens: 2048,
+              messages: [{ role: "user", content: prompt }]
+            })
+          });
+
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error?.message || `API error ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          const text = data.content?.[0]?.text || "";
+          el.explainOutput.innerHTML = `<div class="ai-explain">${renderMarkdown(text)}</div>`;
+        } catch (e) {
+          el.explainOutput.innerHTML = `<div class="danger">Error: ${escapeHtml(e.message)}</div>`;
+        } finally {
+          el.explainBtn.disabled = false;
+        }
+      }
+
+      function renderMarkdown(text) {
+        return text
+          // Code blocks (``` ... ```)
+          .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+            `<pre><code>${escapeHtml(code.trim())}</code></pre>`)
+          // Inline code
+          .replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`)
+          // ## headings
+          .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+          // ### headings
+          .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+          // Bold
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          // Italic
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          // Unordered list items
+          .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
+          // Ordered list items
+          .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+          // Wrap consecutive <li> in <ul>
+          .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+          // Paragraphs (double newline)
+          .replace(/\n\n+/g, '</p><p>')
+          .replace(/^(?!<[hup]|<li|<pre)(.+)$/gm, '$1')
+          // Wrap in p
+          .replace(/^([^<\n].*)$/gm, (m) => m.startsWith('<') ? m : m)
+          // Single newlines inside paragraphs
+          .replace(/(?<!>)\n(?!<)/g, '<br>')
+          // Clean up empty paragraphs
+          .replace(/<p><\/p>/g, '')
+          .replace(/<p>(<[hup])/g, '$1')
+          .replace(/(<\/[hup][^>]*>)<\/p>/g, '$1');
       }
 
       async function renderExplainSearch(ruleItems, activeIdx) {
