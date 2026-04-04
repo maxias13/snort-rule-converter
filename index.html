@@ -1626,8 +1626,106 @@ if __name__ == "__main__":
             return;
           }
 
-          if ((lower === "byte_test" || lower === "byte_jump") && /(^|,)\s*string\s*(,|$)/i.test(opt)) {
-            warnings.push(`${lower} uses string modifier; review Snort 3 parameter behavior`);
+          // ── flowbits → xbits ────────────────────────────────────────────
+          if (lower === "flowbits") {
+            const val = opt.slice(opt.indexOf(":") + 1).trim();
+            const parts = val.split(",").map(s => s.trim());
+            const action = (parts[0] || "").toLowerCase();
+            const flagName = parts[1] || "";
+
+            if (action === "noalert") {
+              // flowbits:noalert → standalone noalert option in Snort 3
+              transformed.push("noalert");
+              changeCount += 1;
+              return;
+            }
+            if (action === "reset") {
+              warnings.push("flowbits:reset has no equivalent in Snort 3; removed");
+              changeCount += 1;
+              return;
+            }
+            // set, unset, toggle, isset, isnotset
+            const validActions = ["set","unset","toggle","isset","isnotset"];
+            if (validActions.includes(action) && flagName) {
+              transformed.push(`xbits:${action},${flagName},track ip_src`);
+              changeCount += 1;
+            } else {
+              warnings.push(`flowbits:${action} could not be automatically converted; review xbits syntax`);
+              transformed.push(opt);
+            }
+            return;
+          }
+
+          // ── isdataat rawbytes removal ────────────────────────────────
+          if (lower === "isdataat") {
+            if (/,\s*rawbytes/i.test(opt)) {
+              const cleaned = opt.replace(/,\s*rawbytes/i, "").trim();
+              warnings.push("isdataat: rawbytes parameter removed in Snort 3");
+              transformed.push(cleaned);
+              changeCount += 1;
+              return;
+            }
+            transformed.push(opt);
+            return;
+          }
+
+          // ── stream_reassemble removed ────────────────────────────────
+          if (lower === "stream_reassemble") {
+            warnings.push("stream_reassemble removed in Snort 3; configure stream reassembly in snort.lua instead");
+            changeCount += 1;
+            return;
+          }
+
+          // ── replace removed ──────────────────────────────────────────
+          if (lower === "replace") {
+            warnings.push("replace removed in Snort 3; use Snort 3 rewrite action or DAQ module instead");
+            changeCount += 1;
+            return;
+          }
+
+          // ── byte_test / byte_jump ────────────────────────────────────
+          if (lower === "byte_test" || lower === "byte_jump") {
+            const val = opt.slice(opt.indexOf(":") + 1).trim();
+            let converted = val;
+            let changed = false;
+
+            // dce flag: still valid in Snort 3, no change needed
+            // string modifier: still valid but warn
+            if (/(^|,)\s*string\s*(,|$)/i.test(val)) {
+              warnings.push(`${lower}: string modifier behavior is unchanged in Snort 3 but verify dec/hex/oct sub-option position`);
+            }
+
+            // align flag on byte_jump: changed from boolean to keyword in some builds
+            if (lower === "byte_jump" && /(^|,)\s*align\s*(,|$)/i.test(val)) {
+              warnings.push("byte_jump: verify align parameter behavior in your Snort 3 build");
+            }
+
+            // from_beginning / from_end / post_offset: byte_jump Snort 3 equivalents
+            if (lower === "byte_jump" && /(from_beginning|from_end|post_offset)/i.test(val)) {
+              warnings.push("byte_jump: from_beginning/from_end/post_offset parameters — verify Snort 3 compatibility");
+            }
+
+            transformed.push(changed ? `${lower}:${converted}` : opt);
+            return;
+          }
+
+          // ── file_data with deprecated params ─────────────────────────
+          if (lower === "file_data") {
+            // file_data:mime was Snort 2 only; Snort 3 uses file_data with no params
+            if (/:\s*mime/i.test(opt)) {
+              warnings.push("file_data:mime not supported in Snort 3; using plain file_data");
+              transformed.push("file_data");
+              changeCount += 1;
+              return;
+            }
+            transformed.push(opt);
+            return;
+          }
+
+          // ── dce_stub_data: keep but note ─────────────────────────────
+          if (lower === "dce_stub_data") {
+            // Still valid in Snort 3 (via dce2 inspector) but needs dce2 enabled
+            warnings.push("dce_stub_data requires dce2 inspector to be enabled in snort.lua");
             transformed.push(opt);
             return;
           }
