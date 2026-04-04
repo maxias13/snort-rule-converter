@@ -1087,6 +1087,18 @@ if __name__ == "__main__":
         lspAdvisoryLink: document.getElementById("lspAdvisoryLink")
       };
 
+      // ── Optimizer version state (module-level so runOptimize can access) ──
+      let optVersion = 2;
+      function setOptVersion(v) {
+        optVersion = v;
+        el.optVersionSnort2.className = v === 2 ? "btn active-version" : "btn secondary";
+        el.optVersionSnort3.className = v === 3 ? "btn active-version" : "btn secondary";
+        el.optInput.placeholder = v === 2
+          ? "Paste Snort 2 local rules here, or drag & drop a .rules / .txt file…"
+          : "Paste Snort 3 local rules here, or drag & drop a .rules / .txt file…";
+        el.optResults.innerHTML = "";
+      }
+
       init();
 
       function init() {
@@ -1165,15 +1177,6 @@ if __name__ == "__main__":
         el.valRulesInput.addEventListener("input", updateValRuleCount);
 
         // ── Optimizer version toggle ─────────────────────────────────────
-        let optVersion = 2; // default: Snort 2
-        function setOptVersion(v) {
-          optVersion = v;
-          el.optVersionSnort2.className = v === 2 ? "btn active-version" : "btn secondary";
-          el.optVersionSnort3.className = v === 3 ? "btn active-version" : "btn secondary";
-          el.optInput.placeholder = v === 2
-            ? "Paste Snort 2 local rules here, or drag & drop a .rules / .txt file…"
-            : "Paste Snort 3 local rules here, or drag & drop a .rules / .txt file…";
-        }
         el.optVersionSnort2.addEventListener("click", () => setOptVersion(2));
         el.optVersionSnort3.addEventListener("click", () => setOptVersion(3));
 
@@ -1363,54 +1366,212 @@ if __name__ == "__main__":
           return;
         }
         const versionLabel = optVersion === 2 ? "Snort 2" : "Snort 3";
-        let html = `<div class="muted" style="font-size:0.82rem;margin-bottom:10px;">Analyzing as <b style="color:var(--primary);">${versionLabel}</b> local rules — ${ruleLines.length} rule${ruleLines.length > 1 ? "s" : ""}</div>`;
+        let html = `<div class="muted" style="font-size:0.82rem;margin-bottom:14px;">
+          Analyzing as <b style="color:var(--primary);">${versionLabel}</b> local rules — ${ruleLines.length} rule${ruleLines.length > 1 ? "s" : ""}
+        </div>`;
+
         ruleLines.forEach((line, idx) => {
           const trimmed = line.trim();
-          const suggestions = analyzeRule(trimmed, optVersion);
-          const label = `Rule ${idx + 1}`;
-          const preview = trimmed.length > 120 ? trimmed.slice(0, 120) + "…" : trimmed;
+          const { mismatch, suggestions, explanation } = analyzeRule(trimmed, optVersion);
+          const label   = `Rule ${idx + 1}`;
+          const preview = trimmed.length > 130 ? trimmed.slice(0, 130) + "…" : trimmed;
+
           html += `<div class="opt-rule-block">
-            <div class="opt-rule-header">${escapeHtml(label)}: ${escapeHtml(preview)}</div>
+            <div class="opt-rule-header">${escapeHtml(label)}: <span style="font-family:monospace;font-weight:400;">${escapeHtml(preview)}</span></div>
             <div class="opt-rule-body">`;
-          if (!suggestions.length) {
-            html += `<div class="opt-rule-ok">&#10003; No suggestions — rule looks good.</div>`;
+
+          // ── Version mismatch banner ───────────────────────────────────
+          if (mismatch) {
+            html += `<div style="margin-bottom:10px; padding:8px 12px; border-radius:6px;
+                       border:1px solid var(--error); background:rgba(255,68,68,0.1);
+                       color:var(--error); font-size:0.88rem;">
+              &#9888; <b>Version mismatch:</b> ${escapeHtml(mismatch)}
+            </div>`;
+          }
+
+          // ── Optimization suggestions ─────────────────────────────────
+          if (!suggestions.length && !mismatch) {
+            html += `<div class="opt-rule-ok">&#10003; No issues found — rule looks good for ${escapeHtml(versionLabel)}.</div>`;
           } else {
             suggestions.forEach(s => {
+              const levelColors = { warn:"var(--error)", info:"var(--primary)", perf:"var(--warn)" };
               html += `<div class="opt-item">
                 <span class="opt-badge ${s.level}">${s.level.toUpperCase()}</span>
-                <span>${escapeHtml(s.msg)}${s.fix ? `<br><span class="muted" style="font-size:0.82rem;">&#10142; ${escapeHtml(s.fix)}</span>` : ""}</span>
+                <span>${escapeHtml(s.msg)}${s.fix
+                  ? `<br><span class="muted" style="font-size:0.82rem;">&#10142; Suggested fix: <code style="color:var(--primary);">${escapeHtml(s.fix)}</code></span>`
+                  : ""}</span>
               </div>`;
             });
           }
+
+          // ── Detailed explanation of each option ──────────────────────
+          if (explanation.length) {
+            html += `<div style="margin-top:12px; border-top:1px solid var(--border); padding-top:10px;">
+              <div style="font-size:0.82rem; font-weight:700; color:var(--muted); margin-bottom:8px; letter-spacing:0.04em;">
+                RULE OPTIONS EXPLAINED
+              </div>`;
+            explanation.forEach(e => {
+              html += `<div style="display:flex; gap:10px; padding:6px 0; border-bottom:1px solid rgba(30,58,95,0.4);">
+                <div style="min-width:130px; font-family:monospace; font-size:0.82rem;
+                            color:var(--primary); font-weight:600; flex-shrink:0;">${escapeHtml(e.keyword)}</div>
+                <div style="font-size:0.84rem; color:var(--text);">
+                  <span style="color:var(--muted); font-size:0.8rem;">[${escapeHtml(e.category)}]</span>
+                  &nbsp;${escapeHtml(e.desc)}
+                  ${e.note ? `<br><span style="color:var(--warn); font-size:0.8rem;">&#9888; ${escapeHtml(e.note)}</span>` : ""}
+                </div>
+              </div>`;
+            });
+            html += `</div>`;
+          }
+
           html += `</div></div>`;
         });
         el.optResults.innerHTML = html;
       }
 
+      // ── Option explanation database ──────────────────────────────────
+      const OPT_EXPLAIN = {
+        // Detection
+        msg:        { category:"Meta",      desc:"Human-readable alert message displayed when the rule fires." },
+        sid:        { category:"Meta",      desc:"Snort rule ID (unique identifier). Local rules must use SID ≥ 1,000,000." },
+        rev:        { category:"Meta",      desc:"Revision number. Increment whenever the rule is modified." },
+        gid:        { category:"Meta",      desc:"Generator ID. Default is 1 (Snort engine). Custom preprocessors use higher GIDs." },
+        classtype:  { category:"Meta",      desc:"Rule classification category (e.g. trojan-activity, web-application-attack). Affects alert priority." },
+        priority:   { category:"Meta",      desc:"Override the classtype's default priority (1=high, 4=low)." },
+        metadata:   { category:"Meta",      desc:"Key-value pairs for rule management (e.g. service, policy). Not used for detection." },
+        reference:  { category:"Meta",      desc:"External reference URL or CVE identifier associated with this rule." },
+        // Flow
+        flow:       { category:"Flow",      desc:"Restricts rule to specific traffic directions and TCP states (e.g. to_server,established). Greatly reduces unnecessary evaluation." },
+        flowbits:   { category:"Flow",      desc:"(Snort 2) Sets/checks stateful flag bits across packets. In Snort 3, use xbits instead." },
+        xbits:      { category:"Flow",      desc:"(Snort 3) Sets/checks named bits associated with a host (track ip_src/ip_dst). Replaces flowbits." },
+        // Content matching
+        content:    { category:"Detection", desc:"Searches payload for a literal string or hex bytes. The primary and most efficient matching mechanism." },
+        nocase:     { category:"Modifier",  desc:"Makes the preceding content match case-insensitive. Has a performance cost — use sparingly." },
+        offset:     { category:"Modifier",  desc:"Starts the content search at this byte offset from the beginning of the payload (or buffer)." },
+        depth:      { category:"Modifier",  desc:"Limits content search to this many bytes from the start point (offset)." },
+        distance:   { category:"Modifier",  desc:"After a previous match, skips this many bytes before beginning the next content search." },
+        within:     { category:"Modifier",  desc:"After a previous match, the next content must be found within this many bytes." },
+        fast_pattern: { category:"Performance", desc:"Designates this content as the fast-pattern candidate for the multi-pattern search engine, reducing overall evaluation cost." },
+        rawbytes:   { category:"Buffer",    desc:"(Snort 2 only) Matches against raw, un-decoded payload bytes. Removed in Snort 3 — use raw_data; sticky buffer." },
+        // PCRE
+        pcre:       { category:"Detection", desc:"Perl-Compatible Regular Expression match against the payload. Powerful but expensive — always pair with a content anchor before pcre." },
+        // Protocol-specific
+        uricontent:  { category:"HTTP",     desc:"(Snort 2 only) Deprecated shorthand for content+http_uri. Use content:\"...\"; http_uri; in Snort 3." },
+        http_uri:    { category:"HTTP",     desc:"(Snort 3 sticky buffer) Matches against the normalized URI. Place before content/pcre options." },
+        http_method: { category:"HTTP",     desc:"(Snort 3 sticky buffer) Matches against the HTTP method (GET, POST, etc.)." },
+        http_header: { category:"HTTP",     desc:"(Snort 3 sticky buffer) Matches against HTTP request/response headers." },
+        http_client_body: { category:"HTTP", desc:"(Snort 3 sticky buffer) Matches against the HTTP request body." },
+        http_stat_code:   { category:"HTTP", desc:"(Snort 3 sticky buffer) Matches against the HTTP status code." },
+        file_data:   { category:"Buffer",   desc:"Activates inspection of file/MIME data carried in the packet (HTTP response body, email attachments, etc.)." },
+        // Byte operations
+        byte_test:   { category:"Detection", desc:"Tests a specified number of bytes against a value using a binary operator. Useful for protocol field validation." },
+        byte_jump:   { category:"Detection", desc:"Jumps the cursor a number of bytes extracted from the packet — used to navigate variable-length protocol fields." },
+        isdataat:    { category:"Detection", desc:"Verifies that data exists at a specified location in the payload, optionally relative to the last match." },
+        // Threshold / rate
+        threshold:   { category:"Rate",     desc:"(Snort 2) Limits alert frequency. In Snort 3, use detection_filter or rate_filter instead." },
+        detection_filter: { category:"Rate", desc:"Suppresses alerts until the rule fires a specified number of times in a time window." },
+        // Other
+        dce_stub_data: { category:"Protocol", desc:"Sticky buffer for the DCE/RPC stub data. Requires the dce2 inspector in snort.lua." },
+        service:      { category:"Meta",    desc:"Declares the application protocol this rule targets (e.g. http, dns, smtp). Used by Snort 3 for traffic classification." },
+        flags:        { category:"TCP",     desc:"Matches specific TCP flag combinations (e.g. S=SYN, SA=SYN-ACK, F=FIN)." },
+        dsize:        { category:"Payload", desc:"Tests the payload length. Useful for filtering out packets that cannot carry a specific exploit." },
+        itype:        { category:"ICMP",    desc:"Matches the ICMP message type field." },
+        icode:        { category:"ICMP",    desc:"Matches the ICMP code field." },
+        ttl:          { category:"IP",      desc:"Tests the IP Time-To-Live value." },
+        tos:          { category:"IP",      desc:"Tests the IP Type-of-Service field." },
+        id:           { category:"IP",      desc:"Tests the IP header identification field." },
+        fragbits:     { category:"IP",      desc:"Tests IP fragmentation flag bits (More Fragments, Don't Fragment, Reserved)." },
+        xbits_note:   {},
+      };
+
+      // ── Version-mismatch detector ─────────────────────────────────────
+      // Returns a human-readable mismatch message, or "" if none
+      function detectVersionMismatch(opts, version) {
+        const has = (kw) => opts.some(o => optionKeyword(o).toLowerCase() === kw.toLowerCase());
+        const isSnort2 = version === 2;
+
+        // Snort-3-only keywords found in a Snort 2 rule
+        const s3only = ["xbits","http_uri","http_method","http_header","http_client_body","http_stat_code","http_raw_uri","http_raw_header","detection_filter","block","rewrite"];
+        // Snort-2-only keywords found in a Snort 3 rule
+        const s2only = ["flowbits","uricontent","rawbytes","threshold","activates","activated_by","resp","react","logto","session","stream_reassemble","replace"];
+
+        if (isSnort2) {
+          const found = s3only.filter(kw => has(kw));
+          if (found.length)
+            return `This rule appears to be Snort 3 syntax but you selected Snort 2. Keyword(s) only valid in Snort 3: ${found.join(", ")}.`;
+        } else {
+          const found = s2only.filter(kw => has(kw));
+          if (found.length)
+            return `This rule appears to be Snort 2 syntax but you selected Snort 3. Keyword(s) only valid in Snort 2: ${found.join(", ")}.`;
+        }
+        return "";
+      }
+
+      // ── Build explanation rows for each option present in the rule ────
+      function buildExplanation(opts, version) {
+        const isSnort2 = version === 2;
+        const seen = new Set();
+        const result = [];
+        opts.forEach(o => {
+          const kw = optionKeyword(o).toLowerCase();
+          if (seen.has(kw)) return;
+          seen.add(kw);
+          const info = OPT_EXPLAIN[kw];
+          if (!info || !info.desc) return;
+
+          // Version-specific notes
+          let note = "";
+          if (kw === "flowbits" && !isSnort2)
+            note = "Snort 2 keyword found in Snort 3 rule. Use xbits instead.";
+          if (kw === "xbits" && isSnort2)
+            note = "Snort 3 keyword found in Snort 2 rule.";
+          if (kw === "rawbytes" && !isSnort2)
+            note = "Removed in Snort 3. Use raw_data; sticky buffer.";
+          if (kw === "uricontent" && !isSnort2)
+            note = "Snort 2 keyword. Use content+http_uri in Snort 3.";
+          if (kw === "threshold" && !isSnort2)
+            note = "Replaced by detection_filter in Snort 3.";
+          if (kw === "pcre") {
+            const val = o.slice(o.indexOf(":") + 1).trim();
+            if (/\/[^\/]*[UIHDSPMCYK][^\/]*\/[^\/]*$/.test(val))
+              note = "Contains Snort 2 HTTP flags. Convert to sticky buffers (http_uri, http_header…) in Snort 3.";
+          }
+
+          // Show actual value
+          const colIdx = o.indexOf(":");
+          const valStr = colIdx >= 0 ? o.slice(colIdx + 1).trim() : "";
+          const keyword = valStr ? `${kw}: ${valStr.length > 60 ? valStr.slice(0,60)+"…" : valStr}` : kw;
+
+          result.push({ keyword, category: info.category, desc: info.desc, note });
+        });
+        return result;
+      }
+
       function analyzeRule(line, version) {
-        const suggestions = [];
         const isSnort2 = (version === 2);
+        const suggestions = [];
 
         // ── Basic structure check ───────────────────────────────────────
         const ACTIONS_S2 = /^(alert|log|pass|drop|reject|sdrop)\s/i;
         const ACTIONS_S3 = /^(alert|log|pass|drop|reject|block|rewrite)\s/i;
         const ACTIONS = isSnort2 ? ACTIONS_S2 : ACTIONS_S3;
         if (!ACTIONS.test(line)) {
-          if (isSnort2)
-            suggestions.push({ level:"warn", msg:"Unrecognized rule action. Snort 2 actions: alert, drop, pass, log, reject, sdrop." });
-          else
-            suggestions.push({ level:"warn", msg:"Unrecognized rule action. Snort 3 actions: alert, drop, pass, log, reject, block, rewrite." });
-          return suggestions;
+          const msg = isSnort2
+            ? "Unrecognized rule action. Snort 2 actions: alert, drop, pass, log, reject, sdrop."
+            : "Unrecognized rule action. Snort 3 actions: alert, drop, pass, log, reject, block, rewrite.";
+          return { mismatch: "", suggestions: [{ level:"warn", msg }], explanation: [] };
         }
 
         const parenStart = line.indexOf("(");
         const parenEnd   = line.lastIndexOf(")");
         if (parenStart === -1 || parenEnd === -1) {
-          suggestions.push({ level:"warn", msg:"Rule option parentheses ( ) are missing or malformed." });
-          return suggestions;
+          return { mismatch: "", suggestions: [{ level:"warn", msg:"Rule option parentheses ( ) are missing or malformed." }], explanation: [] };
         }
         const optStr = line.slice(parenStart + 1, parenEnd);
         const opts   = splitOptions(optStr);
+
+        // ── Version mismatch detection ────────────────────────────────
+        const mismatch = detectVersionMismatch(opts, version);
 
         const get = (kw) => {
           for (const o of opts) {
@@ -1433,23 +1594,21 @@ if __name__ == "__main__":
         if (!has("rev"))
           suggestions.push({ level:"info", msg:"Missing rev option. Recommended for version tracking.", fix:"rev:1;" });
 
-        // ── SID range advisory (both versions) ──────────────────────────
+        // ── SID range advisory ───────────────────────────────────────────
         const sidVal = parseInt(get("sid") || "0", 10);
         if (sidVal > 0 && sidVal < 1000000)
-          suggestions.push({ level:"info", msg:`SID ${sidVal} falls in the Snort built-in range (1–999,999). Local rules should use SID 1,000,000 or higher.` });
+          suggestions.push({ level:"info", msg:`SID ${sidVal} falls in the built-in range (1–999,999). Local rules should use SID ≥ 1,000,000.` });
 
         // ── gid:1 is default ─────────────────────────────────────────────
-        const gidVal = get("gid");
-        if (gidVal === "1")
-          suggestions.push({ level:"info", msg:"gid:1 is the default value and can be omitted." });
+        if (get("gid") === "1")
+          suggestions.push({ level:"info", msg:"gid:1 is the default and can be omitted." });
 
-        // ══ SNORT 2 specific checks ══════════════════════════════════════
+        // ══ SNORT 2 specific ══════════════════════════════════════════════
         if (isSnort2) {
-          // ── Snort 2 deprecated / will-not-migrate keywords ─────────────
           const deprecated2 = [
-            ["uricontent",    "replaced by content + http_uri sticky buffer in Snort 3", 'content:"..."; http_uri;'],
-            ["rawbytes",      "removed in Snort 3 — use raw_data sticky buffer"],
-            ["threshold",     "replaced by rate_filter or detection_filter in Snort 3"],
+            ["uricontent",    "replaced by content + http_uri in Snort 3",            'content:"..."; http_uri;'],
+            ["rawbytes",      "removed in Snort 3 — use raw_data; sticky buffer"],
+            ["threshold",     "replaced by detection_filter in Snort 3"],
             ["activates",     "dynamic rules removed in Snort 3"],
             ["activated_by",  "dynamic rules removed in Snort 3"],
             ["resp",          "removed in Snort 3"],
@@ -1457,57 +1616,47 @@ if __name__ == "__main__":
             ["logto",         "removed in Snort 3"],
             ["session",       "removed in Snort 3"],
             ["tag",           "limited support in Snort 3"],
-            ["stream_reassemble", "removed in Snort 3 — configure in snort.lua"],
+            ["stream_reassemble","removed in Snort 3 — configure in snort.lua"],
             ["replace",       "removed in Snort 3 — use rewrite action or DAQ module"],
           ];
           deprecated2.forEach(([kw, msg, fix]) => {
-            if (has(kw))
-              suggestions.push({ level:"warn", msg:`'${kw}' will not migrate to Snort 3: ${msg}.`, fix });
+            if (has(kw)) suggestions.push({ level:"warn", msg:`'${kw}' will not migrate to Snort 3: ${msg}.`, fix });
           });
 
-          // ── flowbits → should migrate to xbits ──────────────────────
           opts.forEach(o => {
             if (optionKeyword(o).toLowerCase() === "flowbits") {
               const val = (o.slice(o.indexOf(":") + 1) || "").trim().toLowerCase();
               if (val.startsWith("reset"))
                 suggestions.push({ level:"warn", msg:"flowbits:reset has no equivalent in Snort 3 and will be dropped during migration." });
               else
-                suggestions.push({ level:"info", msg:"flowbits will be converted to xbits with track ip_src during Snort 3 migration.", fix:"xbits:<action>,<name>,track ip_src;" });
+                suggestions.push({ level:"info", msg:"flowbits → will be converted to xbits with track ip_src during Snort 3 migration.", fix:"xbits:<action>,<name>,track ip_src;" });
             }
           });
 
-          // ── fast_pattern:only ─────────────────────────────────────────
           opts.forEach(o => {
             if (/fast_pattern\s*:\s*only/i.test(o))
               suggestions.push({ level:"warn", msg:"'fast_pattern:only' is removed in Snort 3.", fix:"Use plain fast_pattern;" });
           });
 
-          // ── PCRE uppercase HTTP flags ─────────────────────────────────
           opts.forEach(o => {
             if (optionKeyword(o).toLowerCase() !== "pcre") return;
             const val = o.slice(o.indexOf(":") + 1).trim();
             if (/\/[^\/]*[UIHDSPMCYK][^\/]*\/[^\/]*$/.test(val))
-              suggestions.push({ level:"warn", msg:"PCRE contains Snort 2 HTTP flags (U,I,H,D,P,C,M,S,Y,K). These must be converted to Snort 3 sticky buffers.", fix:"Use http_uri; http_header; etc. before pcre" });
+              suggestions.push({ level:"warn", msg:"PCRE contains Snort 2 HTTP flags (U,I,H,D,P,C,M,S,Y,K) that must be converted to Snort 3 sticky buffers.", fix:"Use http_uri; http_header; etc. before pcre" });
           });
 
-          // ── metadata:service → service: ──────────────────────────────
           opts.forEach(o => {
             if (optionKeyword(o).toLowerCase() === "metadata") {
-              const val = (o.slice(o.indexOf(":") + 1) || "").toLowerCase();
-              if (val.includes("service"))
-                suggestions.push({ level:"info", msg:"service value inside metadata should be extracted as a standalone service: option in Snort 3.", fix:"service:http,dns;" });
+              if ((o.slice(o.indexOf(":") + 1) || "").toLowerCase().includes("service"))
+                suggestions.push({ level:"info", msg:"service value inside metadata should be a standalone service: option in Snort 3.", fix:"service:http,dns;" });
             }
           });
 
-          // ── file_data:mime ────────────────────────────────────────────
-          if (has("file_data")) {
-            opts.forEach(o => {
-              if (optionKeyword(o).toLowerCase() === "file_data" && /:\s*mime/i.test(o))
-                suggestions.push({ level:"warn", msg:"file_data:mime is not supported in Snort 3 — use plain file_data." });
-            });
-          }
+          opts.forEach(o => {
+            if (optionKeyword(o).toLowerCase() === "file_data" && /:\s*mime/i.test(o))
+              suggestions.push({ level:"warn", msg:"file_data:mime is not supported in Snort 3 — use plain file_data." });
+          });
 
-          // ── byte_test/byte_jump migration notes ───────────────────────
           opts.forEach(o => {
             const kw = optionKeyword(o).toLowerCase();
             if (kw !== "byte_test" && kw !== "byte_jump") return;
@@ -1518,110 +1667,94 @@ if __name__ == "__main__":
               suggestions.push({ level:"info", msg:"byte_jump: from_beginning/from_end/post_offset — verify Snort 3 compatibility." });
           });
 
-        // ══ SNORT 3 specific checks ══════════════════════════════════════
+        // ══ SNORT 3 specific ══════════════════════════════════════════════
         } else {
-          // ── Snort 2 remnants in Snort 3 rule ─────────────────────────
           const remnants = [
-            ["uricontent",    "this is a Snort 2 keyword — use content + http_uri;"],
-            ["rawbytes",      "removed in Snort 3 — use raw_data; sticky buffer"],
+            ["uricontent",    "Snort 2 keyword — use content + http_uri;"],
+            ["rawbytes",      "removed — use raw_data; sticky buffer"],
             ["flowbits",      "Snort 3 uses xbits — replace with xbits:<action>,<name>,track ip_src;"],
-            ["threshold",     "replaced by rate_filter or detection_filter"],
-            ["activates",     "dynamic rules are not supported in Snort 3"],
-            ["activated_by",  "dynamic rules are not supported in Snort 3"],
+            ["threshold",     "replaced by detection_filter"],
+            ["activates",     "dynamic rules not supported in Snort 3"],
+            ["activated_by",  "dynamic rules not supported in Snort 3"],
             ["resp",          "removed in Snort 3"],
             ["react",         "removed in Snort 3"],
             ["logto",         "removed in Snort 3"],
-            ["stream_reassemble", "removed in Snort 3 — configure in snort.lua"],
-            ["replace",       "removed in Snort 3 — use rewrite action"],
+            ["stream_reassemble","removed — configure in snort.lua"],
+            ["replace",       "removed — use rewrite action"],
           ];
           remnants.forEach(([kw, msg]) => {
-            if (has(kw))
-              suggestions.push({ level:"warn", msg:`'${kw}' found in Snort 3 rule: ${msg}.` });
+            if (has(kw)) suggestions.push({ level:"warn", msg:`'${kw}' found in Snort 3 rule: ${msg}.` });
           });
 
-          // ── fast_pattern:only ─────────────────────────────────────────
           opts.forEach(o => {
             if (/fast_pattern\s*:\s*only/i.test(o))
               suggestions.push({ level:"warn", msg:"'fast_pattern:only' is not valid in Snort 3.", fix:"Use plain fast_pattern;" });
           });
 
-          // ── PCRE uppercase HTTP flags ─────────────────────────────────
           opts.forEach(o => {
             if (optionKeyword(o).toLowerCase() !== "pcre") return;
             const val = o.slice(o.indexOf(":") + 1).trim();
             if (/\/[^\/]*[UIHDSPMCYK][^\/]*\/[^\/]*$/.test(val))
-              suggestions.push({ level:"warn", msg:"PCRE contains Snort 2 HTTP flags (U,I,H,D,P,C,M,S,Y,K). Use sticky buffers (http_uri; http_header; etc.) instead.", fix:"Use http_uri; http_header; etc. before pcre" });
+              suggestions.push({ level:"warn", msg:"PCRE contains Snort 2 HTTP flags — use sticky buffers instead.", fix:"Use http_uri; http_header; etc. before pcre" });
           });
 
-          // ── metadata:service → service: ──────────────────────────────
           opts.forEach(o => {
             if (optionKeyword(o).toLowerCase() === "metadata") {
-              const val = (o.slice(o.indexOf(":") + 1) || "").toLowerCase();
-              if (val.includes("service"))
+              if ((o.slice(o.indexOf(":") + 1) || "").toLowerCase().includes("service"))
                 suggestions.push({ level:"info", msg:"Prefer standalone service: option over embedding service inside metadata.", fix:"service:http,dns;" });
             }
           });
 
-          // ── xbits syntax check ────────────────────────────────────────
           opts.forEach(o => {
             if (optionKeyword(o).toLowerCase() === "xbits") {
               const val = o.slice(o.indexOf(":") + 1).trim();
               if (!/track\s+ip_(src|dst|src_dst|both)/i.test(val))
-                suggestions.push({ level:"warn", msg:"xbits requires a track clause (e.g. track ip_src).", fix:"xbits:set,<name>,track ip_src;" });
+                suggestions.push({ level:"warn", msg:"xbits requires a track clause.", fix:"xbits:set,<name>,track ip_src;" });
               if (!/expire\s+\d+/i.test(val))
-                suggestions.push({ level:"info", msg:"xbits without expire will use the default timeout. Consider adding expire:<seconds>.", fix:"xbits:set,<name>,track ip_src,expire 3600;" });
+                suggestions.push({ level:"info", msg:"xbits without expire uses the default timeout. Consider adding expire:<seconds>.", fix:"xbits:set,<name>,track ip_src,expire 3600;" });
             }
           });
 
-          // ── dce_stub_data inspector dependency ───────────────────────
           if (has("dce_stub_data"))
             suggestions.push({ level:"info", msg:"dce_stub_data requires the dce2 inspector to be enabled in snort.lua." });
         }
 
-        // ══ Common checks (both versions) ═══════════════════════════════
-
-        // ── Missing flow ──────────────────────────────────────────────
+        // ══ Common checks ════════════════════════════════════════════════
         if (!has("flow"))
           suggestions.push({ level:"perf", msg:"No flow option. Specifying flow reduces unnecessary packet inspection.", fix:"flow:to_server,established;" });
 
-        // ── PCRE without content anchor ───────────────────────────────
         const hasPcre    = has("pcre");
         const hasContent = has("content");
         if (hasPcre && !hasContent)
-          suggestions.push({ level:"perf", msg:"pcre with no preceding content match. A content anchor before pcre significantly reduces evaluation cost.", fix:'content:"unique string"; pcre:"/pattern/";' });
+          suggestions.push({ level:"perf", msg:"pcre with no preceding content anchor. A content match before pcre greatly reduces evaluation cost.", fix:'content:"unique string"; pcre:"/pattern/";' });
 
-        // ── fast_pattern recommendation ───────────────────────────────
         const contents = all("content");
         if (contents.length >= 2 && !opts.some(o => /fast_pattern/i.test(o)))
-          suggestions.push({ level:"perf", msg:`${contents.length} content options but no fast_pattern. Mark the most unique content to improve search performance.`, fix:"Add fast_pattern; after the most unique content option" });
+          suggestions.push({ level:"perf", msg:`${contents.length} content options but no fast_pattern — mark the most unique content for the search engine.`, fix:"Add fast_pattern; after the most unique content option" });
 
-        // ── Short content patterns ────────────────────────────────────
         contents.forEach(o => {
           const val = o.slice(o.indexOf(":") + 1).trim().replace(/^"(.*)"$/, "$1");
           const textOnly = val.replace(/\|[0-9A-Fa-f\s]+\|/g, "").replace(/!/g, "");
           if (textOnly.length > 0 && textOnly.length < 4)
-            suggestions.push({ level:"perf", msg:`Short content "${textOnly}" (${textOnly.length} chars) is too broad and degrades performance.`, fix:"Use a string of 4+ characters for better specificity" });
+            suggestions.push({ level:"perf", msg:`Short content "${textOnly}" (${textOnly.length} chars) matches too broadly — use ≥ 4 chars for better specificity.` });
         });
 
-        // ── No detection criteria ─────────────────────────────────────
         if (!hasContent && !hasPcre && !has("byte_test") && !has("byte_jump") && !has("isdataat"))
-          suggestions.push({ level:"warn", msg:"No payload inspection criteria (content, pcre, byte_test, etc.). This rule alerts on all matching traffic.", fix:"Add at least one content or pcre option" });
+          suggestions.push({ level:"warn", msg:"No payload inspection (content, pcre, byte_test…). This rule alerts on ALL matching traffic.", fix:"Add at least one content or pcre option" });
 
-        // ── distance:0 → within ───────────────────────────────────────
         opts.forEach(o => {
-          if (optionKeyword(o).toLowerCase() === "distance") {
-            const val = o.slice(o.indexOf(":") + 1).trim();
-            if (val === "0")
-              suggestions.push({ level:"info", msg:"distance:0 is equivalent to within. Use within for clarity." });
-          }
+          if (optionKeyword(o).toLowerCase() === "distance" && o.slice(o.indexOf(":")+1).trim() === "0")
+            suggestions.push({ level:"info", msg:"distance:0 is equivalent to within:0. Use within for clarity." });
         });
 
-        // ── Excessive nocase ──────────────────────────────────────────
         const nocaseCount = opts.filter(o => optionKeyword(o).toLowerCase() === "nocase").length;
         if (nocaseCount > 3)
-          suggestions.push({ level:"perf", msg:`nocase appears ${nocaseCount} times. Case-insensitive matching carries a performance cost — use only where necessary.` });
+          suggestions.push({ level:"perf", msg:`nocase appears ${nocaseCount} times. Case-insensitive matching has a performance cost — use only where necessary.` });
 
-        return suggestions;
+        // ── Build explanation for each recognized option ──────────────
+        const explanation = buildExplanation(opts, version);
+
+        return { mismatch, suggestions, explanation };
       }
 
       function switchView(viewId, tabEl) {
