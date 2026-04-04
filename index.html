@@ -7,6 +7,39 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, orderBy, query, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // ── Firebase config (replace with your own project config) ───────────
+    const firebaseConfig = {
+      apiKey:            "AIzaSyPlaceholderKeyReplaceMe",
+      authDomain:        "snort-feedback.firebaseapp.com",
+      projectId:         "snort-feedback",
+      storageBucket:     "snort-feedback.appspot.com",
+      messagingSenderId: "000000000000",
+      appId:             "1:000000000000:web:placeholder000000000"
+    };
+    // ─────────────────────────────────────────────────────────────────────
+
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    window.__fbSubmit = async (type, title, author, content) => {
+      await addDoc(collection(db, "feedback"), {
+        type, title, author: author || "Anonymous", content,
+        createdAt: serverTimestamp()
+      });
+    };
+
+    window.__fbLoad = async () => {
+      const q    = query(collection(db, "feedback"), orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    };
+  </script>
   <style>
     :root {
       --bg: #0a0e1a;
@@ -506,42 +539,7 @@
       animation: spin 0.8s linear infinite; flex-shrink: 0;
     }
 
-    /* ── Feedback modal ──────────────────────────────────────────────── */
-    .fb-overlay {
-      display: none;
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.7);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-    }
-    .fb-overlay.open { display: flex; }
-    .fb-modal {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 28px 32px;
-      width: min(560px, 94vw);
-      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
-      position: relative;
-    }
-    .fb-modal h2 {
-      margin: 0 0 6px;
-      font-size: 1.15rem;
-      color: var(--primary);
-    }
-    .fb-modal p.fb-sub {
-      margin: 0 0 20px;
-      font-size: 0.82rem;
-      color: var(--muted);
-    }
-    .fb-close {
-      position: absolute; top: 14px; right: 16px;
-      background: none; border: none;
-      color: var(--muted); font-size: 1.3rem;
-      cursor: pointer; line-height: 1;
-    }
-    .fb-close:hover { color: #fff; }
+    /* ── Feedback board ──────────────────────────────────────────────── */
     .fb-field { margin-bottom: 14px; }
     .fb-field label {
       display: block;
@@ -573,23 +571,53 @@
     .fb-field textarea { resize: vertical; min-height: 110px; }
     .fb-row { display: flex; gap: 10px; }
     .fb-row .fb-field { flex: 1; }
-    .fb-actions {
-      display: flex; gap: 10px; justify-content: flex-end;
-      margin-top: 20px;
+    .fb-form-panel {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin-bottom: 22px;
     }
-    .fb-note {
-      font-size: 0.76rem;
-      color: var(--muted);
-      margin-top: 14px;
-      border-top: 1px solid var(--border);
-      padding-top: 10px;
+    .fb-post {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
     }
-    .fb-note a { color: var(--primary); text-decoration: none; }
+    .fb-post-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .fb-post-title {
+      font-weight: 700; font-size: 0.97rem; color: #fff;
+      flex: 1;
+    }
+    .fb-type-badge {
+      font-size: 0.72rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 20px;
+      white-space: nowrap;
+    }
+    .fb-type-feature { background: rgba(0,212,255,0.15); color: var(--primary); border: 1px solid rgba(0,212,255,0.3); }
+    .fb-type-bug     { background: rgba(255,68,68,0.15);  color: var(--error);   border: 1px solid rgba(255,68,68,0.3); }
+    .fb-type-suggest { background: rgba(255,170,0,0.15);  color: var(--warn);    border: 1px solid rgba(255,170,0,0.3); }
+    .fb-post-meta {
+      font-size: 0.78rem; color: var(--muted); margin-bottom: 10px;
+    }
+    .fb-post-content {
+      font-size: 0.88rem; color: #c8d8e8;
+      white-space: pre-wrap; line-height: 1.6;
+    }
+    .fb-empty {
+      text-align: center; padding: 40px 0;
+      color: var(--muted); font-size: 0.9rem;
+    }
     .tab-btn.feedback-btn {
       border-color: var(--warn);
       color: var(--warn);
     }
-    .tab-btn.feedback-btn:hover {
+    .tab-btn.feedback-btn:hover,
+    .tab-btn.feedback-btn.active {
       background: rgba(255,170,0,0.08);
       border-color: var(--warn);
       color: #fff;
@@ -609,52 +637,9 @@
         <button class="tab-btn" data-view="sruView">Snort SRU Updates</button>
         <button class="tab-btn" data-view="lspView">Snort LSP Updates</button>
         <a class="tab-btn" href="https://docs.snort.org/welcome" target="_blank" rel="noopener noreferrer">How to write Snort 3 rules &#8599;</a>
-        <button class="tab-btn feedback-btn" id="feedbackBtn">&#128172; Feedback</button>
+        <button class="tab-btn feedback-btn" data-view="feedbackView">&#128172; Feedback</button>
       </div>
     </nav>
-
-    <!-- ── Feedback Modal ──────────────────────────────────────────────── -->
-    <div class="fb-overlay" id="fbOverlay">
-      <div class="fb-modal" role="dialog" aria-modal="true" aria-labelledby="fbTitle">
-        <button class="fb-close" id="fbClose" aria-label="Close">&times;</button>
-        <h2 id="fbTitle">&#128172; Share Feedback</h2>
-        <p class="fb-sub">Report a bug, request a feature, or share any suggestion. Your feedback will be submitted as a GitHub Issue.</p>
-
-        <div class="fb-row">
-          <div class="fb-field">
-            <label for="fbType">Type</label>
-            <select id="fbType">
-              <option value="추가 (Feature Request)">&#10133; Feature Request</option>
-              <option value="수정 (Bug Report)">&#128027; Bug Report</option>
-              <option value="제안 (Suggestion)">&#128161; Suggestion</option>
-            </select>
-          </div>
-          <div class="fb-field">
-            <label for="fbAuthor">Author</label>
-            <input id="fbAuthor" type="text" placeholder="Your name or alias" maxlength="60" />
-          </div>
-        </div>
-
-        <div class="fb-field">
-          <label for="fbTitle2">Title</label>
-          <input id="fbTitle2" type="text" placeholder="Brief summary of your feedback" maxlength="120" />
-        </div>
-
-        <div class="fb-field">
-          <label for="fbContent">Content</label>
-          <textarea id="fbContent" placeholder="Describe in detail — steps to reproduce, expected vs actual behavior, or your idea..."></textarea>
-        </div>
-
-        <div class="fb-actions">
-          <button class="btn secondary" id="fbCancel">Cancel</button>
-          <button class="btn" id="fbSubmit">Submit via GitHub &#8599;</button>
-        </div>
-
-        <p class="fb-note">
-          Submitting will open <a href="https://github.com/maxias13/snort-rule-converter/issues" target="_blank" rel="noopener">GitHub Issues</a> in a new tab with your feedback pre-filled. A GitHub account is required to post.
-        </p>
-      </div>
-    </div>
 
     <section id="homeView" class="view active">
       <div class="split">
@@ -880,6 +865,58 @@ python3 validate_snort3.py --strict converted_rules.rules</div>
         </div>
         <div id="lspResults" class="result-card muted" style="min-height:120px;">
           Click <b>Load Latest</b> to fetch this week's LSP release notes (Snort 3 rules: new / modified / deleted).
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Feedback Board ────────────────────────────────────────────────── -->
+    <section id="feedbackView" class="view">
+      <div class="panel">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:18px;">
+          <div>
+            <h3 style="margin:0 0 4px;">&#128172; Feedback Board</h3>
+            <p class="muted" style="margin:0; font-size:0.85rem;">
+              Share your suggestions, bug reports, or ideas. Posts are visible to all visitors.
+            </p>
+          </div>
+          <button class="btn" id="fbToggleForm">&#43; Write Feedback</button>
+        </div>
+
+        <!-- Submit form (hidden by default) -->
+        <div class="fb-form-panel" id="fbFormPanel" style="display:none;">
+          <div class="fb-row">
+            <div class="fb-field">
+              <label for="fbType">Type</label>
+              <select id="fbType">
+                <option value="Feature Request">&#10133; Feature Request</option>
+                <option value="Bug Report">&#128027; Bug Report</option>
+                <option value="Suggestion">&#128161; Suggestion</option>
+              </select>
+            </div>
+            <div class="fb-field">
+              <label for="fbAuthor">Author</label>
+              <input id="fbAuthor" type="text" placeholder="Your name or alias" maxlength="60" />
+            </div>
+          </div>
+          <div class="fb-field">
+            <label for="fbTitle2">Title <span style="color:var(--error);">*</span></label>
+            <input id="fbTitle2" type="text" placeholder="Brief summary of your feedback" maxlength="120" />
+          </div>
+          <div class="fb-field">
+            <label for="fbContent">Content <span style="color:var(--error);">*</span></label>
+            <textarea id="fbContent" placeholder="Describe in detail — steps to reproduce, expected vs actual behavior, or your idea..."></textarea>
+          </div>
+          <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:6px;">
+            <button class="btn secondary" id="fbCancelForm">Cancel</button>
+            <button class="btn" id="fbSubmit">Submit</button>
+          </div>
+        </div>
+
+        <!-- Post list -->
+        <div id="fbPostList">
+          <div class="fb-empty" id="fbLoadingMsg">
+            <span class="spinner"></span>&nbsp; Loading feedback...
+          </div>
         </div>
       </div>
     </section>
@@ -1393,50 +1430,98 @@ if __name__ == "__main__":
         el.sruLoadBtn.addEventListener("click", () => loadSnortUpdates("sru"));
         el.lspLoadBtn.addEventListener("click", () => loadSnortUpdates("lsp"));
 
-        // ── Feedback modal ────────────────────────────────────────────────
-        const fbOverlay = document.getElementById("fbOverlay");
-        const fbClose   = document.getElementById("fbClose");
-        const fbCancel  = document.getElementById("fbCancel");
-        const fbSubmit  = document.getElementById("fbSubmit");
+        // ── Feedback board ────────────────────────────────────────────────
+        const fbFormPanel  = document.getElementById("fbFormPanel");
+        const fbToggleForm = document.getElementById("fbToggleForm");
+        const fbCancelForm = document.getElementById("fbCancelForm");
+        const fbSubmit     = document.getElementById("fbSubmit");
+        const fbPostList   = document.getElementById("fbPostList");
+        const fbLoadingMsg = document.getElementById("fbLoadingMsg");
 
-        function openFeedback() { fbOverlay.classList.add("open"); document.getElementById("fbTitle2").focus(); }
-        function closeFeedback() { fbOverlay.classList.remove("open"); }
+        function typeBadgeClass(t) {
+          if (t === "Bug Report")      return "fb-type-bug";
+          if (t === "Feature Request") return "fb-type-feature";
+          return "fb-type-suggest";
+        }
 
-        document.getElementById("feedbackBtn").addEventListener("click", openFeedback);
-        fbClose.addEventListener("click", closeFeedback);
-        fbCancel.addEventListener("click", closeFeedback);
-        fbOverlay.addEventListener("click", (e) => { if (e.target === fbOverlay) closeFeedback(); });
-        document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFeedback(); });
+        function fmtTs(ts) {
+          if (!ts) return "";
+          const d = ts.toDate ? ts.toDate() : new Date(ts);
+          return d.toLocaleString("ko-KR", { year:"numeric", month:"2-digit", day:"2-digit",
+                                             hour:"2-digit", minute:"2-digit" });
+        }
 
-        fbSubmit.addEventListener("click", () => {
+        function renderPosts(posts) {
+          if (!posts.length) {
+            fbPostList.innerHTML = '<div class="fb-empty">아직 등록된 피드백이 없습니다. 첫 번째로 글을 남겨보세요!</div>';
+            return;
+          }
+          fbPostList.innerHTML = posts.map(p => `
+            <div class="fb-post">
+              <div class="fb-post-header">
+                <span class="fb-type-badge ${typeBadgeClass(p.type)}">${escapeHtml(p.type)}</span>
+                <span class="fb-post-title">${escapeHtml(p.title)}</span>
+              </div>
+              <div class="fb-post-meta">&#128100; ${escapeHtml(p.author)} &nbsp;&middot;&nbsp; ${fmtTs(p.createdAt)}</div>
+              <div class="fb-post-content">${escapeHtml(p.content)}</div>
+            </div>`).join("");
+        }
+
+        async function loadPosts() {
+          fbLoadingMsg.style.display = "block";
+          try {
+            if (!window.__fbLoad) throw new Error("Firebase not configured");
+            const posts = await window.__fbLoad();
+            renderPosts(posts);
+          } catch (e) {
+            fbPostList.innerHTML = `<div class="fb-empty" style="color:var(--error);">
+              Firebase 연결 오류: 관리자에게 문의하거나 잠시 후 다시 시도하세요.<br>
+              <small style="opacity:0.6;">${escapeHtml(e.message)}</small></div>`;
+          }
+        }
+
+        fbToggleForm.addEventListener("click", () => {
+          const open = fbFormPanel.style.display === "none";
+          fbFormPanel.style.display = open ? "block" : "none";
+          fbToggleForm.textContent  = open ? "✕ Close" : "+ Write Feedback";
+          if (open) document.getElementById("fbTitle2").focus();
+        });
+
+        fbCancelForm.addEventListener("click", () => {
+          fbFormPanel.style.display = "none";
+          fbToggleForm.textContent  = "+ Write Feedback";
+        });
+
+        fbSubmit.addEventListener("click", async () => {
           const type    = document.getElementById("fbType").value;
           const author  = document.getElementById("fbAuthor").value.trim();
           const title   = document.getElementById("fbTitle2").value.trim();
           const content = document.getElementById("fbContent").value.trim();
 
-          if (!title) { document.getElementById("fbTitle2").focus(); return; }
+          if (!title)   { document.getElementById("fbTitle2").focus(); return; }
           if (!content) { document.getElementById("fbContent").focus(); return; }
 
-          const issueTitle = `[${type}] ${title}`;
-          const issueBody  = [
-            `**Type:** ${type}`,
-            `**Author:** ${author || "Anonymous"}`,
-            "",
-            "## Description",
-            content,
-            "",
-            "---",
-            "*Submitted via [Snort Rule Converter](https://maxias13.github.io/snort-rule-converter/)*",
-          ].join("\n");
-
-          const url = "https://github.com/maxias13/snort-rule-converter/issues/new?"
-            + "labels=feedback&"
-            + "title=" + encodeURIComponent(issueTitle) + "&"
-            + "body="  + encodeURIComponent(issueBody);
-
-          window.open(url, "_blank", "noopener,noreferrer");
-          closeFeedback();
+          fbSubmit.disabled = true;
+          fbSubmit.textContent = "Submitting...";
+          try {
+            await window.__fbSubmit(type, title, author, content);
+            // clear form
+            document.getElementById("fbTitle2").value  = "";
+            document.getElementById("fbAuthor").value  = "";
+            document.getElementById("fbContent").value = "";
+            fbFormPanel.style.display = "none";
+            fbToggleForm.textContent  = "+ Write Feedback";
+            await loadPosts();
+          } catch (e) {
+            alert("제출 실패: " + e.message);
+          } finally {
+            fbSubmit.disabled = false;
+            fbSubmit.textContent = "Submit";
+          }
         });
+
+        // Expose loadPosts so switchView can call it via a module-level ref
+        window.__fbLoadPosts = loadPosts;
       }
 
       function seedExample() {
@@ -1993,6 +2078,7 @@ if __name__ == "__main__":
         tabEl.classList.add("active");
         if (viewId === "homeView") clearMain();
         if (viewId === "validatorView") updateRuleCount();
+        if (viewId === "feedbackView" && window.__fbLoadPosts) window.__fbLoadPosts();
       }
 
       function handleFileLoad(event) {
